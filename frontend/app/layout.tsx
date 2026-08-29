@@ -1,10 +1,19 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Geist, Geist_Mono, Fraunces } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
+import { Toaster } from '@/components/ui/sonner'
+import { SmoothScrollProvider } from '@/components/motion/smooth-scroll-provider'
+import { ScrollProgress } from '@/components/motion/scroll-progress'
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
 const _geistMono = Geist_Mono({ subsets: ["latin"] });
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-serif",
+  style: ["normal", "italic"],
+  axes: ["opsz", "SOFT", "WONK"],
+});
 
 export const metadata: Metadata = {
   title: 'NoteTube AI - Transform YouTube Lectures into Smart Study Materials',
@@ -30,7 +39,7 @@ export const metadata: Metadata = {
 }
 
 export const viewport: Viewport = {
-  themeColor: '#0d0a1a',
+  themeColor: '#f4efe3',
 }
 
 export default function RootLayout({
@@ -39,9 +48,13 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   return (
-    <html lang="en" className="bg-[#0d0a1a]">
+    <html lang="en" className={`bg-[#f4efe3] ${fraunces.variable}`}>
       <body className="font-sans antialiased min-h-screen gradient-bg">
-        {children}
+        <SmoothScrollProvider>
+          <ScrollProgress />
+          {children}
+        </SmoothScrollProvider>
+        <Toaster position="top-right" richColors theme="light" />
         {process.env.NODE_ENV === 'production' && <Analytics />}
       </body>
     </html>

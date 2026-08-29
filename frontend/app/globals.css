@@ -3,45 +3,46 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* NoteTube AI - Dark Purple Theme */
+/* NoteTube AI - Warm Editorial "Notebook" Theme */
 :root {
-  --background: #0d0a1a;
-  --foreground: #f5f5f7;
-  --card: rgba(26, 20, 46, 0.8);
-  --card-foreground: #f5f5f7;
-  --popover: rgba(26, 20, 46, 0.95);
-  --popover-foreground: #f5f5f7;
-  --primary: #a855f7;
-  --primary-foreground: #ffffff;
-  --secondary: rgba(139, 92, 246, 0.15);
-  --secondary-foreground: #e9d5ff;
-  --muted: rgba(139, 92, 246, 0.1);
-  --muted-foreground: #a1a1aa;
-  --accent: rgba(139, 92, 246, 0.2);
-  --accent-foreground: #e9d5ff;
-  --destructive: #ef4444;
-  --destructive-foreground: #fecaca;
-  --border: rgba(139, 92, 246, 0.2);
-  --input: rgba(139, 92, 246, 0.15);
-  --ring: #a855f7;
-  --chart-1: #a855f7;
-  --chart-2: #06b6d4;
-  --chart-3: #22d3ee;
-  --chart-4: #f472b6;
-  --chart-5: #8b5cf6;
-  --radius: 0.75rem;
-  --sidebar: rgba(13, 10, 26, 0.95);
-  --sidebar-foreground: #f5f5f7;
-  --sidebar-primary: #a855f7;
-  --sidebar-primary-foreground: #ffffff;
-  --sidebar-accent: rgba(139, 92, 246, 0.15);
-  --sidebar-accent-foreground: #f5f5f7;
-  --sidebar-border: rgba(139, 92, 246, 0.15);
-  --sidebar-ring: #a855f7;
+  --background: #f4efe3;
+  --foreground: #2a241c;
+  --card: #fffdf8;
+  --card-foreground: #2a241c;
+  --popover: #fffdf8;
+  --popover-foreground: #2a241c;
+  --primary: #bd5b2c;
+  --primary-foreground: #fdf6ec;
+  --secondary: rgba(189, 91, 44, 0.08);
+  --secondary-foreground: #8a3f1c;
+  --muted: #ece2cf;
+  --muted-foreground: #7d7461;
+  --accent: rgba(189, 91, 44, 0.1);
+  --accent-foreground: #8a3f1c;
+  --destructive: #b3432f;
+  --destructive-foreground: #fdf6ec;
+  --border: #e2d6bd;
+  --input: #e2d6bd;
+  --ring: #bd5b2c;
+  --chart-1: #bd5b2c;
+  --chart-2: #8a6d3f;
+  --chart-3: #5f7a5f;
+  --chart-4: #a9762f;
+  --chart-5: #7d7461;
+  --radius: 0.875rem;
+  --sidebar: #f9f4e9;
+  --sidebar-foreground: #2a241c;
+  --sidebar-primary: #bd5b2c;
+  --sidebar-primary-foreground: #fdf6ec;
+  --sidebar-accent: rgba(189, 91, 44, 0.08);
+  --sidebar-accent-foreground: #2a241c;
+  --sidebar-border: #e2d6bd;
+  --sidebar-ring: #bd5b2c;
 }
 
 @theme inline {
   --font-sans: 'Geist', 'Geist Fallback';
+  --font-serif: 'Fraunces', 'Georgia', serif;
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -88,49 +89,150 @@
   body {
     @apply bg-background text-foreground;
   }
+  ::selection {
+    background: rgba(189, 91, 44, 0.18);
+    color: #2a241c;
+  }
 }
 
-/* Custom gradient backgrounds */
+html.lenis {
+  height: auto;
+}
+
+.lenis.lenis-smooth {
+  scroll-behavior: auto !important;
+}
+
+.font-serif-display {
+  font-family: var(--font-serif);
+}
+
+/* ---------- Background ---------- */
+
 .gradient-bg {
-  background: linear-gradient(135deg, #0d0a1a 0%, #1a1035 50%, #0d0a1a 100%);
+  background: #f4efe3;
 }
 
-.gradient-purple {
-  background: linear-gradient(135deg, #a855f7 0%, #6366f1 50%, #06b6d4 100%);
+/* Faint ruled-notebook-paper texture; a restrained nod to the concept
+   rather than literal photography. Used sparingly, never at full strength. */
+.ruled-paper {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent,
+    transparent 34px,
+    var(--border) 35px
+  );
 }
 
-.glass-card {
-  background: rgba(26, 20, 46, 0.6);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(139, 92, 246, 0.15);
+/* ---------- Surfaces ---------- */
+
+.panel {
+  background: var(--card);
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 2px rgba(42, 36, 28, 0.04), 0 10px 28px -14px rgba(42, 36, 28, 0.12);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
 }
 
+.panel-hover:hover {
+  border-color: rgba(189, 91, 44, 0.35);
+  box-shadow: 0 1px 2px rgba(42, 36, 28, 0.05), 0 16px 36px -14px rgba(42, 36, 28, 0.16);
+  transform: translateY(-2px);
+}
+
+/* Sidebar / top nav sit above scrolling content, so a light blur here is
+   functional (avoids content bleeding through) rather than decorative. */
 .glass-sidebar {
-  background: rgba(13, 10, 26, 0.95);
-  backdrop-filter: blur(20px);
-  border-right: 1px solid rgba(139, 92, 246, 0.15);
+  background: rgba(249, 244, 233, 0.88);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  border-right: 1px solid var(--border);
 }
 
-/* Animated gradient button */
+.glass-nav {
+  background: rgba(244, 239, 227, 0.82);
+  backdrop-filter: blur(14px) saturate(120%);
+  -webkit-backdrop-filter: blur(14px) saturate(120%);
+  border-bottom: 1px solid var(--border);
+}
+
+/* ---------- Accents ---------- */
+
+.gradient-accent {
+  background: var(--primary);
+}
+
 .gradient-button {
-  background: linear-gradient(135deg, #a855f7 0%, #6366f1 50%, #06b6d4 100%);
-  background-size: 200% 200%;
-  transition: all 0.3s ease;
+  background: var(--primary);
+  transition: all 0.25s ease;
 }
 
 .gradient-button:hover {
-  background-position: 100% 100%;
-  box-shadow: 0 0 30px rgba(168, 85, 247, 0.3);
-}
-
-/* Glow effects */
-.glow-purple {
-  box-shadow: 0 0 20px rgba(168, 85, 247, 0.2);
+  background: #a94f24;
+  box-shadow: 0 10px 24px -10px rgba(189, 91, 44, 0.5);
 }
 
 .text-gradient {
-  background: linear-gradient(135deg, #a855f7 0%, #06b6d4 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
+  color: var(--primary);
+}
+
+.badge-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  background: rgba(189, 91, 44, 0.06);
+  border: 1px solid rgba(189, 91, 44, 0.25);
+}
+
+.pulse-dot {
+  position: relative;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--primary);
+}
+
+.pulse-dot::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  background: rgba(189, 91, 44, 0.4);
+  animation: pulse-ring 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+@keyframes pulse-ring {
+  0% { transform: scale(0.6); opacity: 0.8; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.divider-fade {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border), transparent);
+}
+
+/* ---------- Marquee ---------- */
+
+.marquee-track {
+  display: flex;
+  width: max-content;
+  animation: marquee 28s linear infinite;
+}
+
+.marquee-track:hover {
+  animation-play-state: paused;
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(14px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
 }

@@ -3,95 +3,88 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Sparkles, Eye, EyeOff, Github } from "lucide-react"
-import axios from "axios"
+import { Sparkles, Eye, EyeOff, Github, Loader2 } from "lucide-react"
+import { toast } from "sonner"
+import { apiPost } from "@/lib/api"
 
 export default function LoginPage() {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
 
 const handleLogin = async (e: React.FormEvent) => {
 
   e.preventDefault()
+  setLoading(true)
 
   try {
 
-    const response = await axios.post(
-      "http://127.0.0.1:5000/login",
-      {
-        email,
-        password
-      }
-    )
+    const data = await apiPost("/login", { email, password })
 
-    localStorage.setItem("token", response.data.token)
-    localStorage.setItem("name", response.data.name)
-    localStorage.setItem("email", response.data.email)
+    localStorage.setItem("token", data.token)
+    localStorage.setItem("name", data.name)
+    localStorage.setItem("email", data.email)
 
-    alert("Login successful")
+    toast.success("Login successful")
 
     router.push("/dashboard")
 
   } catch (error: any) {
-
-    if (error.response) {
-  alert(error.response.data.message)
-} else {
-  alert("Server error")
-}
-
+    toast.error(error?.message || "Error connecting to the server")
+  } finally {
+    setLoading(false)
   }
 
 }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center px-4 py-12 relative overflow-hidden">
+      <div className="relative w-full max-w-md animate-fade-up">
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl gradient-purple flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl gradient-accent flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-semibold text-white">NoteTube AI</span>
+            <span className="text-xl font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
           </Link>
-          <h1 className="text-2xl font-bold text-white mb-2">Welcome back</h1>
-          <p className="text-gray-400">Sign in to continue to NoteTube AI</p>
+          <h1 className="text-2xl font-serif-display font-semibold text-foreground mb-2 tracking-tight">Welcome back</h1>
+          <p className="text-muted-foreground">Sign in to continue to NoteTube AI</p>
         </div>
 
         {/* Login Form */}
-        <div className="glass-card rounded-2xl p-8 border border-white/10">
+        <div className="panel rounded-2xl p-8">
           <form onSubmit={handleLogin} className="space-y-5">
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Email</label>
+              <label className="block text-sm text-muted-foreground mb-2">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Password</label>
+              <label className="block text-sm text-muted-foreground mb-2">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Enter your password"
-                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 transition-all pr-12"
+                  className="w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all pr-12"
                   required
                 />
                 <button
-                  type="submit"
+                  type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
                 >
                   {showPassword ? (
                     <EyeOff className="w-5 h-5" />
@@ -108,13 +101,13 @@ const handleLogin = async (e: React.FormEvent) => {
                   type="checkbox"
                   checked={rememberMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="w-4 h-4 rounded bg-white/5 border border-white/10 text-purple-500 focus:ring-purple-500/50"
+                  className="w-4 h-4 rounded bg-black/[0.02] border border-black/10 text-primary focus:ring-primary/40"
                 />
-                <span className="text-sm text-gray-400">Remember me</span>
+                <span className="text-sm text-muted-foreground">Remember me</span>
               </label>
               <Link
                 href="/forgot-password"
-                className="text-sm text-purple-400 hover:text-purple-300 transition-colors"
+                className="text-sm text-primary hover:text-primary/80 transition-colors"
               >
                 Forgot password?
               </Link>
@@ -122,22 +115,28 @@ const handleLogin = async (e: React.FormEvent) => {
 
             <button
               type="submit"
-              className="w-full gradient-button py-4 rounded-xl text-white font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+              disabled={loading}
+              className="w-full gradient-button py-4 rounded-xl text-primary-foreground font-medium transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2"
             >
-              Sign In
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {loading ? "Signing in..." : "Sign In"}
             </button>
           </form>
 
           {/* Divider */}
           <div className="flex items-center gap-4 my-6">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-sm text-gray-500">or continue with</span>
-            <div className="flex-1 h-px bg-white/10" />
+            <div className="flex-1 divider-fade" />
+            <span className="text-sm text-muted-foreground">or continue with</span>
+            <div className="flex-1 divider-fade" />
           </div>
 
           {/* Social Login */}
           <div className="grid grid-cols-2 gap-3">
-            <button className="flex items-center justify-center gap-2 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all">
+            <button
+              type="button"
+              onClick={() => toast.info("Google login isn't available yet")}
+              className="flex items-center justify-center gap-2 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground hover:bg-black/[0.04] hover:border-black/20 transition-all"
+            >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
                   fill="currentColor"
@@ -158,7 +157,11 @@ const handleLogin = async (e: React.FormEvent) => {
               </svg>
               Google
             </button>
-            <button className="flex items-center justify-center gap-2 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all">
+            <button
+              type="button"
+              onClick={() => toast.info("GitHub login isn't available yet")}
+              className="flex items-center justify-center gap-2 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground hover:bg-black/[0.04] hover:border-black/20 transition-all"
+            >
               <Github className="w-5 h-5" />
               GitHub
             </button>
@@ -166,11 +169,11 @@ const handleLogin = async (e: React.FormEvent) => {
         </div>
 
         {/* Sign Up Link */}
-        <p className="text-center text-gray-400 mt-6">
+        <p className="text-center text-muted-foreground mt-6">
           {"Don't have an account? "}
           <Link
             href="/signup"
-            className="text-purple-400 hover:text-purple-300 transition-colors"
+            className="text-primary hover:text-primary/80 transition-colors"
           >
             Sign up
           </Link>

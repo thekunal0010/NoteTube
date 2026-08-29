@@ -3,8 +3,9 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Sparkles, Eye, EyeOff, Github, Check } from "lucide-react"
-import axios from "axios"
+import { Sparkles, Eye, EyeOff, Github, Check, Loader2 } from "lucide-react"
+import { toast } from "sonner"
+import { apiPost } from "@/lib/api"
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState("")
@@ -13,13 +14,14 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [agreeToTerms, setAgreeToTerms] = useState(false)
+  const [loading, setLoading] = useState(false)
   const router = useRouter()
 
   const passwordStrength = () => {
     if (password.length === 0) return { level: 0, text: "", color: "" }
     if (password.length < 6) return { level: 1, text: "Weak", color: "bg-red-500" }
-    if (password.length < 10) return { level: 2, text: "Medium", color: "bg-yellow-500" }
-    return { level: 3, text: "Strong", color: "bg-green-500" }
+    if (password.length < 10) return { level: 2, text: "Medium", color: "bg-amber-500" }
+    return { level: 3, text: "Strong", color: "bg-primary" }
   }
 
   const strength = passwordStrength()
@@ -29,90 +31,93 @@ const handleSignup = async (e: React.FormEvent) => {
   e.preventDefault()
 
   if (password !== confirmPassword) {
-    alert("Passwords do not match")
+    toast.error("Passwords do not match")
     return
   }
 
+  if (!agreeToTerms) {
+    toast.error("Please agree to the Terms of Service and Privacy Policy")
+    return
+  }
+
+  setLoading(true)
+
   try {
 
-    const response = await axios.post(
-      "http://127.0.0.1:5000/signup",
-      {
-        name: fullName,
-        email: email,
-        password: password
-      }
-    )
+    const data = await apiPost("/signup", {
+      name: fullName,
+      email,
+      password,
+    })
 
-    alert(response.data.message)
+    toast.success(data.message || "Signup successful")
 
     router.push("/login")
 
   } catch (error: any) {
-
-    alert(error.response.data.message)
-
+    toast.error(error?.message || "Error connecting to the server")
+  } finally {
+    setLoading(false)
   }
-
 }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4 py-12">
-      <div className="w-full max-w-md">
+    <div className="min-h-screen flex items-center justify-center px-4 py-12 relative overflow-hidden">
+      <div className="relative w-full max-w-md animate-fade-up">
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl gradient-purple flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-white" />
+            <div className="w-10 h-10 rounded-xl gradient-accent flex items-center justify-center">
+              <Sparkles className="w-5 h-5 text-primary-foreground" />
             </div>
-            <span className="text-xl font-semibold text-white">NoteTube AI</span>
+            <span className="text-xl font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
           </Link>
-          <h1 className="text-2xl font-bold text-white mb-2">Create your account</h1>
-          <p className="text-gray-400">Start transforming lectures into knowledge</p>
+          <h1 className="text-2xl font-serif-display font-semibold text-foreground mb-2 tracking-tight">Create your account</h1>
+          <p className="text-muted-foreground">Start transforming lectures into knowledge</p>
         </div>
 
         {/* Signup Form */}
-        <div className="glass-card rounded-2xl p-8 border border-white/10">
+        <div className="panel rounded-2xl p-8">
           <form onSubmit={handleSignup} className="space-y-5">
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Full Name</label>
+              <label className="block text-sm text-muted-foreground mb-2">Full Name</label>
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 placeholder="Enter your full name"
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Email</label>
+              <label className="block text-sm text-muted-foreground mb-2">Email</label>
               <input
                 type="email"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="Enter your email"
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all"
                 required
               />
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-2">Password</label>
+              <label className="block text-sm text-muted-foreground mb-2">Password</label>
               <div className="relative">
                 <input
                   type={showPassword ? "text" : "password"}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="Create a password"
-                  className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 transition-all pr-12"
+                  className="w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all pr-12"
                   required
                 />
                 <button
-                  type="submit"
+                  type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 hover:text-white transition-colors"
+                  className="absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
                 >
                   {showPassword ? (
                     <EyeOff className="w-5 h-5" />
@@ -129,18 +134,18 @@ const handleSignup = async (e: React.FormEvent) => {
                       <div
                         key={level}
                         className={`h-1 flex-1 rounded-full ${
-                          level <= strength.level ? strength.color : "bg-white/10"
+                          level <= strength.level ? strength.color : "bg-black/10"
                         }`}
                       />
                     ))}
                   </div>
-                  <p className="text-xs text-gray-400">{strength.text}</p>
+                  <p className="text-xs text-muted-foreground">{strength.text}</p>
                 </div>
               )}
             </div>
 
             <div>
-              <label className="block text-sm text-gray-400 mb-2">
+              <label className="block text-sm text-muted-foreground mb-2">
                 Confirm Password
               </label>
               <input
@@ -148,14 +153,14 @@ const handleSignup = async (e: React.FormEvent) => {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 placeholder="Confirm your password"
-                className="w-full px-4 py-3 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 transition-all"
+                className="w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all"
                 required
               />
               {confirmPassword && password !== confirmPassword && (
-                <p className="text-xs text-red-400 mt-1">Passwords do not match</p>
+                <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
               )}
               {confirmPassword && password === confirmPassword && (
-                <p className="text-xs text-green-400 mt-1 flex items-center gap-1">
+                <p className="text-xs text-primary mt-1 flex items-center gap-1">
                   <Check className="w-3 h-3" /> Passwords match
                 </p>
               )}
@@ -166,16 +171,16 @@ const handleSignup = async (e: React.FormEvent) => {
                 type="checkbox"
                 checked={agreeToTerms}
                 onChange={(e) => setAgreeToTerms(e.target.checked)}
-                className="w-4 h-4 mt-1 rounded bg-white/5 border border-white/10 text-purple-500 focus:ring-purple-500/50"
+                className="w-4 h-4 mt-1 rounded bg-black/[0.02] border border-black/10 text-primary focus:ring-primary/40"
                 required
               />
-              <span className="text-sm text-gray-400">
+              <span className="text-sm text-muted-foreground">
                 I agree to the{" "}
-                <Link href="#" className="text-purple-400 hover:text-purple-300">
+                <Link href="#" className="text-primary hover:text-primary/80">
                   Terms of Service
                 </Link>{" "}
                 and{" "}
-                <Link href="#" className="text-purple-400 hover:text-purple-300">
+                <Link href="#" className="text-primary hover:text-primary/80">
                   Privacy Policy
                 </Link>
               </span>
@@ -183,22 +188,28 @@ const handleSignup = async (e: React.FormEvent) => {
 
             <button
               type="submit"
-              className="w-full gradient-button py-4 rounded-xl text-white font-medium transition-all hover:scale-[1.02] active:scale-[0.98]"
+              disabled={loading}
+              className="w-full gradient-button py-4 rounded-xl text-primary-foreground font-medium transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-70 disabled:hover:scale-100 flex items-center justify-center gap-2"
             >
-              Create Account
+              {loading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {loading ? "Creating account..." : "Create Account"}
             </button>
           </form>
 
           {/* Divider */}
           <div className="flex items-center gap-4 my-6">
-            <div className="flex-1 h-px bg-white/10" />
-            <span className="text-sm text-gray-500">or continue with</span>
-            <div className="flex-1 h-px bg-white/10" />
+            <div className="flex-1 divider-fade" />
+            <span className="text-sm text-muted-foreground">or continue with</span>
+            <div className="flex-1 divider-fade" />
           </div>
 
           {/* Social Login */}
           <div className="grid grid-cols-2 gap-3">
-            <button className="flex items-center justify-center gap-2 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all">
+            <button
+              type="button"
+              onClick={() => toast.info("Google signup isn't available yet")}
+              className="flex items-center justify-center gap-2 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground hover:bg-black/[0.04] hover:border-black/20 transition-all"
+            >
               <svg className="w-5 h-5" viewBox="0 0 24 24">
                 <path
                   fill="currentColor"
@@ -219,7 +230,11 @@ const handleSignup = async (e: React.FormEvent) => {
               </svg>
               Google
             </button>
-            <button className="flex items-center justify-center gap-2 py-3 rounded-xl bg-white/5 border border-white/10 text-white hover:bg-white/10 transition-all">
+            <button
+              type="button"
+              onClick={() => toast.info("GitHub signup isn't available yet")}
+              className="flex items-center justify-center gap-2 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground hover:bg-black/[0.04] hover:border-black/20 transition-all"
+            >
               <Github className="w-5 h-5" />
               GitHub
             </button>
@@ -227,11 +242,11 @@ const handleSignup = async (e: React.FormEvent) => {
         </div>
 
         {/* Login Link */}
-        <p className="text-center text-gray-400 mt-6">
+        <p className="text-center text-muted-foreground mt-6">
           Already have an account?{" "}
           <Link
             href="/login"
-            className="text-purple-400 hover:text-purple-300 transition-colors"
+            className="text-primary hover:text-primary/80 transition-colors"
           >
             Sign in
           </Link>

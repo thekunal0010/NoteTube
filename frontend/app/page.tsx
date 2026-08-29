@@ -1,9 +1,19 @@
 "use client"
 
-import { useState } from "react"
-import axios from "axios"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+import { toast } from "sonner"
+import { motion } from "framer-motion"
+import { apiPost, apiGet } from "@/lib/api"
+import { connectSocket } from "@/lib/socket"
+import { GenerationProgress } from "@/components/generation-progress"
+import { HeroPreview } from "@/components/hero-preview"
+import { Reveal, revealItem } from "@/components/motion/reveal"
+import { Counter } from "@/components/motion/counter"
+import { Marquee } from "@/components/motion/marquee"
+import { Magnetic } from "@/components/motion/magnetic"
+import { HorizontalScroll } from "@/components/motion/horizontal-scroll"
 import {
   Sparkles,
   Play,
@@ -15,38 +25,39 @@ import {
   ArrowRight,
   Menu,
   X,
+  Zap,
+  Video,
+  Users,
+  Layers,
+  LayoutDashboard,
+  LogOut,
 } from "lucide-react"
 
 const features = [
   {
     icon: FileText,
-    title: "AI Summaries",
-    description: "Get comprehensive summaries of any lecture",
-    color: "from-purple-500 to-purple-600",
+    title: "Notes worth keeping",
+    description: "A clear overview plus organized key points — not a one-paragraph blur. Structured the way you'd actually write it.",
   },
   {
     icon: CreditCard,
     title: "Flashcards",
-    description: "Auto-generate flashcards for efficient studying",
-    color: "from-cyan-500 to-cyan-600",
+    description: "Auto-generated from the real material, ready for spaced-repetition review.",
   },
   {
     icon: ListChecks,
-    title: "MCQ Generator",
-    description: "Practice with AI-generated questions",
-    color: "from-pink-500 to-pink-600",
+    title: "A quiz to prove it",
+    description: "Practice questions pulled straight from the lecture, with instant feedback.",
   },
   {
     icon: BookOpen,
-    title: "Revision Notes",
-    description: "Key concepts organized for quick review",
-    color: "from-orange-500 to-orange-600",
+    title: "One connected kit",
+    description: "Notes, flashcards, and quiz for a video live together — no hunting across tabs.",
   },
   {
     icon: Download,
-    title: "PDF Export",
-    description: "Download your materials for offline study",
-    color: "from-green-500 to-green-600",
+    title: "Export & revisit",
+    description: "Download your materials and pick up exactly where you left off.",
   },
 ]
 
@@ -59,100 +70,154 @@ const trendingLectures = [
 ]
 
 const stats = [
-  { value: "50K+", label: "Notes Generated" },
-  { value: "10K+", label: "Videos Processed" },
-  { value: "100K+", label: "Flashcards Created" },
-  { value: "25K+", label: "Active Students" },
+  { value: 50, suffix: "K+", label: "Notes Generated", icon: FileText },
+  { value: 10, suffix: "K+", label: "Videos Processed", icon: Video },
+  { value: 100, suffix: "K+", label: "Flashcards Created", icon: Layers },
+  { value: 25, suffix: "K+", label: "Active Students", icon: Users },
 ]
+
+interface RecentNote {
+  id: string
+  youtube_url: string
+  summary: string | { overview: string; key_points: string[] }
+}
+
+function excerptOf(note: RecentNote) {
+  const text = typeof note.summary === "string" ? note.summary : note.summary?.overview
+  if (!text) return note.youtube_url
+  return text.length > 60 ? `${text.slice(0, 60)}…` : text
+}
 
 export default function LandingPage() {
   const [youtubeUrl, setYoutubeUrl] = useState("")
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const router = useRouter()
   const [loading, setLoading] = useState(false)
-  const [summary, setSummary] = useState("")
+  const [progress, setProgress] = useState({ stage: "", percent: 0 })
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [recentNotes, setRecentNotes] = useState<RecentNote[]>([])
 
-  
+  useEffect(() => {
+    const token = localStorage.getItem("token")
+    if (!token) return
+
+    setIsLoggedIn(true)
+    apiGet("/notes")
+      .then((data) => setRecentNotes((data.notes || []).slice(0, 8)))
+      .catch(() => {})
+  }, [])
+
+  const handleLogout = () => {
+    localStorage.removeItem("token")
+    localStorage.removeItem("name")
+    localStorage.removeItem("email")
+    setIsLoggedIn(false)
+    setRecentNotes([])
+    toast.success("Logged out")
+  }
 
   const handleGenerateNotes = async () => {
 
-  const email = localStorage.getItem("email")
-  const token = localStorage.getItem("token")
+    if (!youtubeUrl.trim()) {
+      toast.error("Paste a YouTube URL first")
+      return
+    }
 
-  if (!token) {
+    const token = localStorage.getItem("token")
 
-    alert("Please login first")
-
-    router.push("/login")
-
-    return
-  }
-
-  try {
+    if (!token) {
+      toast.error("Please login first")
+      router.push("/login")
+      return
+    }
 
     setLoading(true)
+    setProgress({ stage: "Connecting...", percent: 0 })
 
-    const response = await axios.post(
-      "http://127.0.0.1:5000/summary",
-      {
-        youtubeUrl,
-        email
-      }
-    )
+    try {
+      const socket = await connectSocket().catch(() => null)
 
-    setSummary(response.data)
+      socket?.on("generation_progress", setProgress)
 
-  } catch (error) {
+      const data = await apiPost("/summary", { youtubeUrl, sid: socket?.id })
 
-    console.log(error)
+      toast.success("Notes generated successfully")
+      router.push(`/notes/${data.id}`)
 
-  } finally {
-
-    setLoading(false)
+      socket?.off("generation_progress", setProgress)
+    } catch (error: any) {
+      toast.error(error?.message || "Failed to generate notes")
+    } finally {
+      setLoading(false)
+      setProgress({ stage: "", percent: 0 })
+    }
 
   }
 
-}
-
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen relative overflow-x-clip">
       {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass-sidebar">
+      <nav className="fixed top-0 left-0 right-0 z-50 glass-nav">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg gradient-purple flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-white" />
+              <div className="w-8 h-8 rounded-lg gradient-accent flex items-center justify-center">
+                <Sparkles className="w-4 h-4 text-primary-foreground" />
               </div>
-              <span className="text-lg font-semibold text-white">NoteTube AI</span>
+              <span className="text-lg font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
             </Link>
 
             {/* Desktop Nav */}
             <div className="hidden md:flex items-center gap-8">
-              <Link href="#features" className="text-gray-400 hover:text-white transition-colors">
-                Features
+              <Link href="#features" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
+                How it works
               </Link>
-              <Link href="#about" className="text-gray-400 hover:text-white transition-colors">
+              <Link href="#about" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
                 About
               </Link>
-              <Link
-                href="/login"
-                className="text-gray-400 hover:text-white transition-colors"
-              >
-                Login
-              </Link>
-              <Link
-                href="/signup"
-                className="gradient-button px-4 py-2 rounded-lg text-white text-sm font-medium"
-              >
-                Get Started
-              </Link>
+              {isLoggedIn ? (
+                <>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-1.5 text-muted-foreground hover:text-destructive transition-colors text-sm"
+                  >
+                    <LogOut className="w-3.5 h-3.5" />
+                    Logout
+                  </button>
+                  <Magnetic strength={0.25}>
+                    <Link
+                      href="/dashboard"
+                      className="gradient-button px-4 py-2 rounded-lg text-primary-foreground text-sm font-medium inline-flex items-center gap-2"
+                    >
+                      <LayoutDashboard className="w-3.5 h-3.5" />
+                      Dashboard
+                    </Link>
+                  </Magnetic>
+                </>
+              ) : (
+                <>
+                  <Link
+                    href="/login"
+                    className="text-muted-foreground hover:text-foreground transition-colors text-sm"
+                  >
+                    Login
+                  </Link>
+                  <Magnetic strength={0.25}>
+                    <Link
+                      href="/signup"
+                      className="gradient-button px-4 py-2 rounded-lg text-primary-foreground text-sm font-medium inline-block"
+                    >
+                      Start free
+                    </Link>
+                  </Magnetic>
+                </>
+              )}
             </div>
 
             {/* Mobile Menu Button */}
             <button
-              className="md:hidden text-white"
+              className="md:hidden text-foreground"
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             >
               {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
@@ -162,188 +227,243 @@ export default function LandingPage() {
 
         {/* Mobile Menu */}
         {mobileMenuOpen && (
-          <div className="md:hidden glass-card border-t border-white/10">
+          <div className="md:hidden panel border-t">
             <div className="px-4 py-4 space-y-3">
-              <Link href="#features" className="block text-gray-400 hover:text-white">
-                Features
+              <Link href="#features" className="block text-muted-foreground hover:text-foreground">
+                How it works
               </Link>
-              <Link href="#about" className="block text-gray-400 hover:text-white">
+              <Link href="#about" className="block text-muted-foreground hover:text-foreground">
                 About
               </Link>
-              <Link href="/login" className="block text-gray-400 hover:text-white">
-                Login
-              </Link>
-              <Link
-                href="/signup"
-                className="block gradient-button px-4 py-2 rounded-lg text-white text-sm font-medium text-center"
-              >
-                Get Started
-              </Link>
+              {isLoggedIn ? (
+                <>
+                  <Link
+                    href="/dashboard"
+                    className="block gradient-button px-4 py-2 rounded-lg text-primary-foreground text-sm font-medium text-center"
+                  >
+                    Dashboard
+                  </Link>
+                  <button
+                    onClick={handleLogout}
+                    className="flex items-center gap-1.5 text-muted-foreground hover:text-destructive transition-colors"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    Logout
+                  </button>
+                </>
+              ) : (
+                <>
+                  <Link href="/login" className="block text-muted-foreground hover:text-foreground">
+                    Login
+                  </Link>
+                  <Link
+                    href="/signup"
+                    className="block gradient-button px-4 py-2 rounded-lg text-primary-foreground text-sm font-medium text-center"
+                  >
+                    Start free
+                  </Link>
+                </>
+              )}
             </div>
           </div>
         )}
       </nav>
 
       {/* Hero Section */}
-      <section className="pt-32 pb-20 px-4">
-        <div className="max-w-5xl mx-auto text-center">
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-6 leading-tight">
-            Turn YouTube Lectures Into{" "}
-            <span className="text-gradient">Smart Study Material</span>
-          </h1>
-          <p className="text-lg md:text-xl text-gray-400 mb-10 max-w-2xl mx-auto">
-            AI-powered notes, flashcards, MCQs, and revision materials from any YouTube lecture. Study smarter, not harder.
-          </p>
+      <section className="relative pt-40 pb-24 px-4">
+        <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
+          >
+            <p className="text-xs font-semibold uppercase tracking-[0.15em] text-primary mb-5">
+              Study companion &middot; no dark mode required
+            </p>
 
-          {/* CTA Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
-            <Link
-              href="/signup"
-              className="gradient-button px-8 py-4 rounded-xl text-white font-medium flex items-center gap-2 hover:scale-105 transition-transform"
-            >
-              Get Started
-              <ArrowRight className="w-5 h-5" />
-            </Link>
-            <Link
-              href="/dashboard"
-              className="px-8 py-4 rounded-xl bg-white/5 border border-white/10 text-white font-medium hover:bg-white/10 transition-all"
-            >
-              Try Demo
-            </Link>
-          </div>
+            <h1 className="text-4xl md:text-6xl font-serif-display font-semibold text-foreground mb-6 leading-[1.1] tracking-tight">
+              Your lectures,{" "}
+              <span className="italic text-gradient">rewritten</span>{" "}
+              as notes worth keeping.
+            </h1>
+            <p className="text-lg text-foreground/70 mb-8 max-w-lg text-balance">
+              Paste a YouTube lecture. NoteTube AI reads it end to end and hands back notes
+              you&apos;d have written yourself — plus flashcards and a quiz to prove you know it.
+            </p>
 
-          {/* YouTube URL Input */}
-          <div className="max-w-2xl mx-auto glass-card rounded-2xl p-6 border border-white/10">
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-8 h-8 rounded-lg bg-purple-500/20 flex items-center justify-center">
-                <Play className="w-4 h-4 text-purple-400" />
+            {/* YouTube URL Input */}
+            <div className="max-w-xl panel rounded-2xl p-5 text-left mb-4">
+              <div className="flex flex-col sm:flex-row gap-3">
+                <input
+                  type="text"
+                  placeholder="https://youtube.com/watch?v=..."
+                  value={youtubeUrl}
+                  onChange={(e) => setYoutubeUrl(e.target.value)}
+                  disabled={loading}
+                  onKeyDown={(e) => e.key === "Enter" && !loading && handleGenerateNotes()}
+                  className="flex-1 px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/70 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all disabled:opacity-60"
+                />
+                <button
+                  onClick={handleGenerateNotes}
+                  disabled={loading}
+                  className="gradient-button px-6 py-3 rounded-xl text-primary-foreground font-medium flex items-center justify-center gap-2 whitespace-nowrap disabled:opacity-70"
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {loading ? "Generating..." : "Generate notes"}
+                </button>
               </div>
-              <span className="text-white font-medium">Try it now</span>
+              {loading && <GenerationProgress stage={progress.stage} percent={progress.percent} />}
             </div>
-            <div className="flex flex-col sm:flex-row gap-3">
-              <input
-                type="text"
-                placeholder="Paste a YouTube lecture URL here..."
-                value={youtubeUrl}
-                onChange={(e) => setYoutubeUrl(e.target.value)}
-                className="flex-1 px-4 py-4 rounded-xl bg-white/5 border border-white/10 text-white placeholder-gray-500 focus:outline-none focus:border-purple-500/50 transition-all"
-              />
-              <button
-                onClick={handleGenerateNotes}
-                className="gradient-button px-6 py-4 rounded-xl text-white font-medium flex items-center justify-center gap-2 whitespace-nowrap"
-              >
-                <Sparkles className="w-5 h-5" />
-                Generate Notes
-              </button>
-            </div>
+            <p className="text-xs text-muted-foreground">Free for your first three lectures. No card required.</p>
+          </motion.div>
+
+          <div className="hidden lg:block">
+            <HeroPreview />
           </div>
         </div>
       </section>
 
-      {/* Trending Lectures */}
-      <section className="py-16 px-4">
-        <div className="max-w-5xl mx-auto">
-          <h2 className="text-2xl font-bold text-white mb-8 text-center">
-            Trending Lectures
+      {/* Recent searches (logged in) or trending lectures (logged out) — infinite marquee */}
+      <Reveal as="section" className="relative py-14 border-y border-border">
+        <div className="flex items-center justify-center gap-2 mb-8 px-4">
+          <Zap className="w-4 h-4 text-primary" />
+          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
+            {isLoggedIn && recentNotes.length > 0 ? "Your Recent Searches" : "Trending Lectures"}
           </h2>
-          <div className="flex flex-wrap justify-center gap-3">
+        </div>
+
+        {isLoggedIn && recentNotes.length > 0 ? (
+          <>
+            <Marquee>
+              {recentNotes.map((note) => (
+                <Link
+                  key={note.id}
+                  href={`/notes/${note.id}`}
+                  className="px-4 py-2 rounded-full panel panel-hover text-foreground/80 text-sm whitespace-nowrap inline-block"
+                >
+                  {excerptOf(note)}
+                </Link>
+              ))}
+            </Marquee>
+            <p className="text-center mt-6">
+              <Link href="/history" className="text-sm text-primary hover:text-primary/80 transition-colors">
+                View full history &rarr;
+              </Link>
+            </p>
+          </>
+        ) : isLoggedIn ? (
+          <p className="text-center text-sm text-muted-foreground px-4">
+            You haven&apos;t generated any notes yet — paste a link above to get started.
+          </p>
+        ) : (
+          <Marquee>
             {trendingLectures.map((lecture) => (
-              <button
+              <span
                 key={lecture.title}
-                className="px-4 py-2 rounded-full bg-white/5 border border-white/10 text-gray-300 text-sm hover:bg-white/10 hover:border-purple-500/30 transition-all"
+                className="px-4 py-2 rounded-full panel text-foreground/80 text-sm whitespace-nowrap"
               >
                 {lecture.title}
-                <span className="ml-2 text-xs text-purple-400">{lecture.category}</span>
-              </button>
+                <span className="ml-2 text-xs text-primary">{lecture.category}</span>
+              </span>
             ))}
-          </div>
-        </div>
-      </section>
+          </Marquee>
+        )}
+      </Reveal>
 
-      {/* Features Section */}
-      <section id="features" className="py-20 px-4">
-        <div className="max-w-6xl mx-auto">
-          <h2 className="text-3xl font-bold text-white mb-4 text-center">
-            Powerful Features
-          </h2>
-          <p className="text-gray-400 text-center mb-12 max-w-2xl mx-auto">
-            Everything you need to transform lectures into effective study materials
+      {/* Features — pinned horizontal scroll */}
+      <div id="features" className="relative">
+        <Reveal className="max-w-3xl mx-auto text-center px-4 pt-16 pb-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-primary mb-4">
+            How it works
           </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {features.map((feature) => (
-              <div
-                key={feature.title}
-                className="glass-card rounded-2xl p-6 border border-white/10 hover:border-purple-500/30 transition-all group"
-              >
-                <div
-                  className={`w-12 h-12 rounded-xl bg-gradient-to-br ${feature.color} flex items-center justify-center mb-4 group-hover:scale-110 transition-transform`}
-                >
-                  <feature.icon className="w-6 h-6 text-white" />
-                </div>
-                <h3 className="text-lg font-semibold text-white mb-2">
+          <h2 className="text-3xl md:text-4xl font-serif-display font-semibold text-foreground mb-4 tracking-tight">
+            Three artefacts from one link
+          </h2>
+          <p className="text-foreground/60">
+            One pipeline turns a lecture into a full study kit. Keep scrolling to see how.
+          </p>
+        </Reveal>
+
+        <HorizontalScroll itemCount={features.length}>
+          {features.map((feature, i) => (
+            <div
+              key={feature.title}
+              className="panel panel-hover rounded-2xl p-8 w-[340px] sm:w-[380px] h-[380px] flex-shrink-0 flex flex-col justify-between relative overflow-hidden"
+            >
+              <span className="absolute top-6 right-7 font-serif-display text-5xl font-semibold text-primary/[0.07] select-none">
+                {String(i + 1).padStart(2, "0")}
+              </span>
+              <div className="w-12 h-12 rounded-xl gradient-accent flex items-center justify-center">
+                <feature.icon className="w-6 h-6 text-primary-foreground" />
+              </div>
+              <div>
+                <h3 className="text-xl font-serif-display font-semibold text-foreground mb-3">
                   {feature.title}
                 </h3>
-                <p className="text-gray-400">{feature.description}</p>
+                <p className="text-foreground/65 leading-relaxed">{feature.description}</p>
               </div>
-            ))}
-          </div>
-        </div>
-      </section>
+            </div>
+          ))}
+        </HorizontalScroll>
+      </div>
 
       {/* Stats Section */}
-      <section className="py-20 px-4">
-        <div className="max-w-4xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+      <Reveal as="section" className="relative py-16 px-4" stagger={0.1}>
+        <div className="max-w-5xl mx-auto">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {stats.map((stat) => (
-              <div key={stat.label} className="text-center">
-                <p className="text-3xl md:text-4xl font-bold text-gradient mb-2">
-                  {stat.value}
+              <motion.div key={stat.label} variants={revealItem} className="panel rounded-2xl p-6 text-center">
+                <stat.icon className="w-5 h-5 text-primary mx-auto mb-3" />
+                <p className="text-3xl md:text-4xl font-serif-display font-semibold text-foreground mb-1">
+                  <Counter value={stat.value} suffix={stat.suffix} />
                 </p>
-                <p className="text-gray-400">{stat.label}</p>
-              </div>
+                <p className="text-muted-foreground text-sm">{stat.label}</p>
+              </motion.div>
             ))}
           </div>
         </div>
-      </section>
+      </Reveal>
 
       {/* CTA Section */}
-      <section id="about" className="py-20 px-4">
-        <div className="max-w-3xl mx-auto text-center">
-          <h2 className="text-3xl font-bold text-white mb-4">
-            Ready to Transform Your Learning?
+      <Reveal as="section" id="about" className="relative py-24 px-4">
+        <div className="relative max-w-3xl mx-auto text-center panel rounded-3xl p-12 ruled-paper">
+          <h2 className="text-3xl font-serif-display font-semibold text-foreground mb-4 tracking-tight">
+            Ready to <span className="italic text-gradient">transform</span> your learning?
           </h2>
-          <p className="text-gray-400 mb-8">
+          <p className="text-foreground/65 mb-8">
             Join thousands of students using NoteTube AI to study more effectively.
           </p>
-          <Link
-            href="/signup"
-            className="inline-flex items-center gap-2 gradient-button px-8 py-4 rounded-xl text-white font-medium hover:scale-105 transition-transform"
-          >
-            Get Started for Free
-            <ArrowRight className="w-5 h-5" />
-          </Link>
+          <Magnetic>
+            <Link
+              href="/signup"
+              className="inline-flex items-center gap-2 gradient-button px-8 py-4 rounded-xl text-primary-foreground font-medium"
+            >
+              Get started for free
+              <ArrowRight className="w-5 h-5" />
+            </Link>
+          </Magnetic>
         </div>
-      </section>
+      </Reveal>
 
       {/* Footer */}
-      <footer className="border-t border-white/10 py-8 px-4">
+      <footer className="relative border-t border-border py-8 px-4">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md gradient-purple flex items-center justify-center">
-              <Sparkles className="w-3 h-3 text-white" />
+            <div className="w-6 h-6 rounded-md gradient-accent flex items-center justify-center">
+              <Sparkles className="w-3 h-3 text-primary-foreground" />
             </div>
-            <span className="text-sm text-gray-400">
-              NoteTube AI - Transform lectures into knowledge
+            <span className="text-sm text-muted-foreground">
+              NoteTube AI &mdash; Transform lectures into knowledge
             </span>
           </div>
-          <div className="flex items-center gap-6 text-sm text-gray-400">
-            <Link href="#" className="hover:text-white transition-colors">
+          <div className="flex items-center gap-6 text-sm text-muted-foreground">
+            <Link href="#" className="hover:text-foreground transition-colors">
               Privacy
             </Link>
-            <Link href="#" className="hover:text-white transition-colors">
+            <Link href="#" className="hover:text-foreground transition-colors">
               Terms
             </Link>
-            <Link href="#" className="hover:text-white transition-colors">
+            <Link href="#" className="hover:text-foreground transition-colors">
               Contact
             </Link>
           </div>
