@@ -3,7 +3,7 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Sparkles, Eye, EyeOff, Github, Loader2 } from "lucide-react"
+import { Eye, EyeOff, Github, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { apiPost } from "@/lib/api"
 
@@ -46,9 +46,7 @@ const handleLogin = async (e: React.FormEvent) => {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl gradient-accent flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img src="/logo.png" alt="NoteTube AI" className="w-10 h-10 object-contain" />
             <span className="text-xl font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
           </Link>
           <h1 className="text-2xl font-serif-display font-semibold text-foreground mb-2 tracking-tight">Welcome back</h1>

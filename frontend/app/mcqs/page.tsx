@@ -9,13 +9,14 @@ import { Reveal, revealItem } from "@/components/motion/reveal"
 import { motion } from "framer-motion"
 import { apiGet } from "@/lib/api"
 import { toast } from "sonner"
-import { CheckCircle2, XCircle, ArrowLeft } from "lucide-react"
+import { CheckCircle2, XCircle, ArrowLeft, Plus } from "lucide-react"
 
 function MCQsView() {
   const searchParams = useSearchParams()
   const noteId = searchParams.get("note")
 
   const [mcqs, setMcqs] = useState<any[]>([])
+  const [visibleCount, setVisibleCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [answers, setAnswers] = useState<Record<number, string>>({})
 
@@ -25,7 +26,9 @@ function MCQsView() {
       try {
         const query = noteId ? `?note=${noteId}` : ""
         const data = await apiGet(`/mcqs${query}`)
-        setMcqs(data.mcqs || [])
+        const all = data.mcqs || []
+        setMcqs(all)
+        setVisibleCount(Math.min(data.min ?? all.length, all.length))
         setAnswers({})
       } catch (error: any) {
         toast.error(error?.message || "Failed to load MCQs")
@@ -35,6 +38,17 @@ function MCQsView() {
     }
     fetchMCQs()
   }, [noteId])
+
+  const LOAD_STEP = 5
+  const visibleMcqs = mcqs.slice(0, visibleCount)
+  const hasMore = visibleCount < mcqs.length
+
+  const loadMore = () => {
+    const next = Math.min(visibleCount + LOAD_STEP, mcqs.length)
+    const added = next - visibleCount
+    setVisibleCount(next)
+    toast.success(`Loaded ${added} more question${added === 1 ? "" : "s"}`)
+  }
 
   if (loading) {
     return (
@@ -61,8 +75,8 @@ function MCQsView() {
   }
 
   const answeredCount = Object.keys(answers).length
-  const correctCount = mcqs.filter((mcq, idx) => answers[idx] === mcq.answer).length
-  const allAnswered = answeredCount === mcqs.length
+  const correctCount = visibleMcqs.filter((mcq, idx) => answers[idx] === mcq.answer).length
+  const allAnswered = answeredCount === visibleMcqs.length
 
   return (
     <DashboardLayout>
@@ -84,8 +98,12 @@ function MCQsView() {
           )}
         </div>
 
-        <Reveal className="space-y-6" stagger={0.08}>
-          {mcqs.map((mcq, idx) => (
+        {/* Keyed by visibleCount so "Load more" remounts this and re-triggers
+            the scroll-in-view reveal for newly appended questions — whileInView
+            with viewport.once only fires once per mount, and would otherwise
+            leave loaded-in questions stuck at opacity 0. */}
+        <Reveal key={visibleCount} className="space-y-6" stagger={0.08}>
+          {visibleMcqs.map((mcq, idx) => (
             <motion.div key={idx} variants={revealItem} className="panel rounded-2xl p-6">
               <div className="flex items-start gap-3 mb-4">
                 <span className="flex-shrink-0 w-7 h-7 rounded-lg bg-primary/8 border border-primary/20 flex items-center justify-center text-xs font-semibold text-primary mt-0.5">
@@ -130,6 +148,18 @@ function MCQsView() {
             </motion.div>
           ))}
         </Reveal>
+
+        {hasMore && (
+          <div className="flex justify-center pt-2">
+            <button
+              onClick={loadMore}
+              className="inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />
+              Load {Math.min(LOAD_STEP, mcqs.length - visibleCount)} more questions
+            </button>
+          </div>
+        )}
       </div>
     </DashboardLayout>
   )

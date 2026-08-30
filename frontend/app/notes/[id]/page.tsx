@@ -34,7 +34,7 @@ interface MCQ {
 interface Note {
   id: string
   youtube_url: string
-  summary: string | { overview: string; key_points: string[] }
+  summary: string | { overview: string; key_points: string[]; paragraphs?: string[]; mode?: string }
   created_at?: string
 }
 
@@ -93,11 +93,20 @@ export default function NoteDetailPage() {
     )
   }
 
-  const summary = typeof note.summary === "string"
-    ? { overview: note.summary, key_points: [] as string[] }
-    : note.summary || { overview: "", key_points: [] }
+  const rawSummary: { overview?: string; key_points?: string[]; paragraphs?: string[]; mode?: string } =
+    typeof note.summary === "string" ? { overview: note.summary } : note.summary || {}
+  const summary = {
+    mode: rawSummary.mode || "comprehensive",
+    overview: rawSummary.overview || "",
+    paragraphs: rawSummary.paragraphs || ([] as string[]),
+    key_points: rawSummary.key_points || ([] as string[]),
+  }
 
-  const headline = summary.overview.split(/(?<=[.!?])\s+/)[0] || "Study Kit"
+  const headline =
+    summary.overview.split(/(?<=[.!?])\s+/)[0] ||
+    summary.paragraphs[0]?.split(/(?<=[.!?])\s+/)[0] ||
+    summary.key_points[0] ||
+    "Study Kit"
 
   return (
     <DashboardLayout>
@@ -132,18 +141,35 @@ export default function NoteDetailPage() {
         </h1>
 
         {/* Summary */}
-        <div className="panel ruled-paper rounded-2xl p-8 mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <FileText className="w-4 h-4 text-primary" />
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Overview</h2>
-          </div>
-          <p className="text-foreground/85 leading-relaxed mb-6 text-[15px]">
-            {summary.overview || "No summary is available for this note."}
-          </p>
+        <div className="panel ruled-paper rounded-2xl p-8 mb-8 space-y-6">
+          {summary.overview && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <FileText className="w-4 h-4 text-primary" />
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
+                  {summary.mode === "quick" ? "Summary" : "Overview"}
+                </h2>
+              </div>
+              <p className="text-foreground/85 leading-relaxed text-[15px]">{summary.overview}</p>
+            </div>
+          )}
+
+          {summary.paragraphs.length > 0 && (
+            <div className="space-y-4">
+              {summary.paragraphs.map((para, i) => (
+                <p key={i} className="text-foreground/85 leading-relaxed text-[15px]">
+                  {para}
+                </p>
+              ))}
+            </div>
+          )}
 
           {summary.key_points.length > 0 && (
-            <>
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground mb-4">Key Points</h2>
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                {!summary.overview && <FileText className="w-4 h-4 text-primary" />}
+                <h2 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">Key Points</h2>
+              </div>
               <Reveal className="space-y-3" stagger={0.06}>
                 {summary.key_points.map((point, i) => (
                   <motion.li
@@ -156,7 +182,11 @@ export default function NoteDetailPage() {
                   </motion.li>
                 ))}
               </Reveal>
-            </>
+            </div>
+          )}
+
+          {!summary.overview && summary.paragraphs.length === 0 && summary.key_points.length === 0 && (
+            <p className="text-foreground/85 leading-relaxed text-[15px]">No summary is available for this note.</p>
           )}
         </div>
 

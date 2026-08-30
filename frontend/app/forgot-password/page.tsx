@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import Link from "next/link"
-import { Sparkles, ArrowLeft, CheckCircle, Mail, Loader2 } from "lucide-react"
+import { ArrowLeft, CheckCircle, Mail, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { apiPost } from "@/lib/api"
 
@@ -36,9 +36,7 @@ export default function ForgotPasswordPage() {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl gradient-accent flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img src="/logo.png" alt="NoteTube AI" className="w-10 h-10 object-contain" />
             <span className="text-xl font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
           </Link>
         </div>

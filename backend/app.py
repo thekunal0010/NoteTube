@@ -11,7 +11,9 @@ from auth import auth, token_required
 from db import notes_collection
 from summarizer import generate_summary
 from transcript import get_transcript
-from study_tools import generate_flashcards, generate_mcqs
+from study_tools import generate_flashcards, generate_mcqs, get_study_limits, group_into_paragraphs
+
+STUDY_MODES = {"comprehensive", "quick", "key_points"}
 
 load_dotenv()
 
@@ -41,6 +43,23 @@ def _find_note(current_user_email, note_id=None):
     return notes_collection.find_one({"email": current_user_email}, sort=[("_id", -1)])
 
 
+def _study_pool(note):
+    """The uncapped sentence pool flashcards/MCQs are generated from, falling
+    back to the (shorter) display summary for notes saved before this field existed."""
+    return note.get("study_pool") or note.get("summary") or ""
+
+
+def _limits_for(note):
+    """Flashcard/MCQ min & max, pinned at creation time so tier changes later
+    don't shift limits out from under an already-generated note. Notes saved
+    before duration tracking existed default to the 5-10 min tier rather than
+    being squeezed into the shortest one."""
+    limits = note.get("study_limits")
+    if limits and limits.get("flashcards") and limits.get("mcqs"):
+        return limits
+    return get_study_limits(note.get("duration_seconds") or 600)
+
+
 @app.route('/')
 def home():
     return "NoteTube Backend Running"
@@ -52,6 +71,7 @@ def summary(current_user_email):
     data = request.json or {}
     youtube_url = (data.get("youtubeUrl") or "").strip()
     sid = data.get("sid")
+    mode = data.get("mode") if data.get("mode") in STUDY_MODES else "comprehensive"
 
     if not youtube_url:
         return jsonify({"message": "Missing YouTube URL"}), 400
@@ -62,7 +82,7 @@ def summary(current_user_email):
 
     try:
         notify("Fetching transcript...", 5)
-        transcript_text = get_transcript(youtube_url)
+        transcript_text, duration_seconds = get_transcript(youtube_url)
 
         if transcript_text.startswith("Transcript Error"):
             if sid:
@@ -71,16 +91,50 @@ def summary(current_user_email):
 
         notify("Transcript ready. Summarizing...", 20)
 
+        limits = get_study_limits(duration_seconds)
+
         def on_chunk(i, total):
             percent = 20 + int(60 * i / total)
             notify(f"Summarizing part {i}/{total}...", percent)
 
-        structured_summary = generate_summary(transcript_text, progress_callback=on_chunk)
+        overview, study_pool = generate_summary(
+            transcript_text, max_chunks=limits["max_chunks"], progress_callback=on_chunk
+        )
+
+        # How much of the pool feeds the notes page scales with video length
+        # too — capped at the tier's MCQ max rather than a flat 10, so a
+        # 1-hour lecture actually reads as a full set of notes.
+        notes_points_cap = limits["mcqs"]["max"]
+        selected_pool = study_pool[:notes_points_cap]
+
+        if mode == "quick":
+            # Flowing paragraphs instead of a bullet list — same amount of
+            # underlying material, just read as prose rather than a scan list.
+            structured_summary = {
+                "mode": mode,
+                "overview": overview,
+                "paragraphs": group_into_paragraphs(selected_pool, size=5),
+                "key_points": [],
+            }
+        elif mode == "key_points":
+            structured_summary = {
+                "mode": mode,
+                "overview": "",
+                "paragraphs": [],
+                "key_points": selected_pool,
+            }
+        else:
+            structured_summary = {
+                "mode": mode,
+                "overview": overview,
+                "paragraphs": [],
+                "key_points": selected_pool,
+            }
 
         notify("Building your study kit...", 88)
 
-        flashcards = generate_flashcards(structured_summary)
-        mcqs = generate_mcqs(structured_summary)
+        flashcards = generate_flashcards(study_pool, count=limits["flashcards"]["min"])
+        mcqs = generate_mcqs(study_pool, count=limits["mcqs"]["min"])
 
         notify("Saving your notes...", 95)
 
@@ -88,6 +142,9 @@ def summary(current_user_email):
             "email": current_user_email,
             "youtube_url": youtube_url,
             "summary": structured_summary,
+            "study_pool": study_pool,
+            "duration_seconds": duration_seconds,
+            "study_limits": {"flashcards": limits["flashcards"], "mcqs": limits["mcqs"]},
             "created_at": datetime.datetime.utcnow(),
         })
 
@@ -131,9 +188,10 @@ def get_note_detail(current_user_email, note_id):
     if not note:
         return jsonify({"message": "Note not found"}), 404
 
-    summary_data = note.get("summary", "")
-    flashcards = generate_flashcards(summary_data)
-    mcqs = generate_mcqs(summary_data)
+    limits = _limits_for(note)
+    pool = _study_pool(note)
+    flashcards = generate_flashcards(pool, count=limits["flashcards"]["min"])
+    mcqs = generate_mcqs(pool, count=limits["mcqs"]["min"])
 
     return jsonify({
         "note": _serialize_note(note),
@@ -171,9 +229,12 @@ def get_flashcards(current_user_email):
     if not note:
         return jsonify({"flashcards": []})
 
-    flashcards = generate_flashcards(note.get("summary", ""))
+    limits = _limits_for(note)["flashcards"]
+    flashcards = generate_flashcards(_study_pool(note), count=limits["max"])
     return jsonify({
         "flashcards": flashcards,
+        "min": limits["min"],
+        "max": limits["max"],
         "source": note.get("youtube_url"),
         "noteId": str(note["_id"]),
     })
@@ -189,9 +250,12 @@ def get_mcqs(current_user_email):
     if not note:
         return jsonify({"mcqs": []})
 
-    mcqs = generate_mcqs(note.get("summary", ""))
+    limits = _limits_for(note)["mcqs"]
+    mcqs = generate_mcqs(_study_pool(note), count=limits["max"])
     return jsonify({
         "mcqs": mcqs,
+        "min": limits["min"],
+        "max": limits["max"],
         "source": note.get("youtube_url"),
         "noteId": str(note["_id"]),
     })

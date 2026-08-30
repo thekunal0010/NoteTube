@@ -7,8 +7,10 @@ import { toast } from "sonner"
 import { motion } from "framer-motion"
 import { apiPost, apiGet } from "@/lib/api"
 import { connectSocket } from "@/lib/socket"
+import { STUDY_MODES, getStoredStudyMode, setStoredStudyMode, type StudyMode } from "@/lib/study-mode"
 import { GenerationProgress } from "@/components/generation-progress"
 import { HeroPreview } from "@/components/hero-preview"
+import { LegalDialog } from "@/components/legal-dialog"
 import { Reveal, revealItem } from "@/components/motion/reveal"
 import { Counter } from "@/components/motion/counter"
 import { Marquee } from "@/components/motion/marquee"
@@ -96,8 +98,12 @@ export default function LandingPage() {
   const [progress, setProgress] = useState({ stage: "", percent: 0 })
   const [isLoggedIn, setIsLoggedIn] = useState(false)
   const [recentNotes, setRecentNotes] = useState<RecentNote[]>([])
+  const [legalDoc, setLegalDoc] = useState<"privacy" | "terms" | null>(null)
+  const [studyMode, setStudyMode] = useState<StudyMode>("comprehensive")
 
   useEffect(() => {
+    setStudyMode(getStoredStudyMode())
+
     const token = localStorage.getItem("token")
     if (!token) return
 
@@ -139,7 +145,7 @@ export default function LandingPage() {
 
       socket?.on("generation_progress", setProgress)
 
-      const data = await apiPost("/summary", { youtubeUrl, sid: socket?.id })
+      const data = await apiPost("/summary", { youtubeUrl, sid: socket?.id, mode: studyMode })
 
       toast.success("Notes generated successfully")
       router.push(`/notes/${data.id}`)
@@ -162,9 +168,7 @@ export default function LandingPage() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link href="/" className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg gradient-accent flex items-center justify-center">
-                <Sparkles className="w-4 h-4 text-primary-foreground" />
-              </div>
+              <img src="/logo.png" alt="NoteTube AI" className="w-8 h-8 object-contain" />
               <span className="text-lg font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
             </Link>
 
@@ -312,6 +316,31 @@ export default function LandingPage() {
                   {loading ? "Generating..." : "Generate notes"}
                 </button>
               </div>
+
+              {/* Summary style */}
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                <span className="text-xs text-muted-foreground mr-0.5">Summary style:</span>
+                {STUDY_MODES.map((m) => (
+                  <button
+                    key={m.value}
+                    type="button"
+                    title={m.description}
+                    disabled={loading}
+                    onClick={() => {
+                      setStudyMode(m.value)
+                      setStoredStudyMode(m.value)
+                    }}
+                    className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all disabled:opacity-60 ${
+                      studyMode === m.value
+                        ? "bg-primary/12 border-primary/40 text-foreground"
+                        : "bg-black/[0.02] border-black/10 text-muted-foreground hover:bg-black/[0.04] hover:border-black/20"
+                    }`}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
               {loading && <GenerationProgress stage={progress.stage} percent={progress.percent} />}
             </div>
             <p className="text-xs text-muted-foreground">Free for your first three lectures. No card required.</p>
@@ -449,26 +478,34 @@ export default function LandingPage() {
       <footer className="relative border-t border-border py-8 px-4">
         <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md gradient-accent flex items-center justify-center">
-              <Sparkles className="w-3 h-3 text-primary-foreground" />
-            </div>
+            <img src="/logo.png" alt="NoteTube AI" className="w-6 h-6 object-contain" />
             <span className="text-sm text-muted-foreground">
               NoteTube AI &mdash; Transform lectures into knowledge
             </span>
           </div>
           <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <Link href="#" className="hover:text-foreground transition-colors">
+            <button
+              type="button"
+              onClick={() => setLegalDoc("privacy")}
+              className="hover:text-foreground transition-colors"
+            >
               Privacy
-            </Link>
-            <Link href="#" className="hover:text-foreground transition-colors">
+            </button>
+            <button
+              type="button"
+              onClick={() => setLegalDoc("terms")}
+              className="hover:text-foreground transition-colors"
+            >
               Terms
-            </Link>
+            </button>
             <Link href="#" className="hover:text-foreground transition-colors">
               Contact
             </Link>
           </div>
         </div>
       </footer>
+
+      <LegalDialog type={legalDoc} onOpenChange={(open) => !open && setLegalDoc(null)} />
     </div>
   )
 }

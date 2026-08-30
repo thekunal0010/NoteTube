@@ -9,13 +9,14 @@ import { Progress } from "@/components/ui/progress"
 import { apiGet } from "@/lib/api"
 import { toast } from "sonner"
 import { motion, AnimatePresence } from "framer-motion"
-import { ChevronLeft, ChevronRight, RotateCw, ArrowLeft } from "lucide-react"
+import { ChevronLeft, ChevronRight, RotateCw, ArrowLeft, Plus } from "lucide-react"
 
 function FlashcardsView() {
   const searchParams = useSearchParams()
   const noteId = searchParams.get("note")
 
   const [flashcards, setFlashcards] = useState<any[]>([])
+  const [visibleCount, setVisibleCount] = useState(0)
   const [loading, setLoading] = useState(true)
   const [currentIndex, setCurrentIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
@@ -27,7 +28,9 @@ function FlashcardsView() {
       try {
         const query = noteId ? `?note=${noteId}` : ""
         const data = await apiGet(`/flashcards${query}`)
-        setFlashcards(data.flashcards || [])
+        const all = data.flashcards || []
+        setFlashcards(all)
+        setVisibleCount(Math.min(data.min ?? all.length, all.length))
         setCurrentIndex(0)
         setFlipped(false)
       } catch (error: any) {
@@ -38,6 +41,17 @@ function FlashcardsView() {
     }
     fetchFlashcards()
   }, [noteId])
+
+  const LOAD_STEP = 5
+  const visibleCards = flashcards.slice(0, visibleCount)
+  const hasMore = visibleCount < flashcards.length
+
+  const loadMore = () => {
+    const next = Math.min(visibleCount + LOAD_STEP, flashcards.length)
+    const added = next - visibleCount
+    setVisibleCount(next)
+    toast.success(`Loaded ${added} more flashcard${added === 1 ? "" : "s"}`)
+  }
 
   if (loading) {
     return (
@@ -63,13 +77,13 @@ function FlashcardsView() {
     )
   }
 
-  const card = flashcards[currentIndex]
-  const progressPct = ((currentIndex + 1) / flashcards.length) * 100
+  const card = visibleCards[currentIndex]
+  const progressPct = ((currentIndex + 1) / visibleCards.length) * 100
 
   const goNext = () => {
     setFlipped(false)
     setDirection(1)
-    setCurrentIndex((prev) => Math.min(flashcards.length - 1, prev + 1))
+    setCurrentIndex((prev) => Math.min(visibleCards.length - 1, prev + 1))
   }
 
   const goPrev = () => {
@@ -155,16 +169,26 @@ function FlashcardsView() {
             <ChevronLeft className="w-4 h-4" />
           </button>
           <span className="text-muted-foreground font-mono text-sm min-w-[3.5rem] text-center">
-            {currentIndex + 1} / {flashcards.length}
+            {currentIndex + 1} / {visibleCards.length}
           </span>
           <button
             onClick={goNext}
-            disabled={currentIndex === flashcards.length - 1}
+            disabled={currentIndex === visibleCards.length - 1}
             className="w-10 h-10 flex items-center justify-center bg-black/[0.02] border border-black/10 rounded-xl hover:bg-primary/8 hover:border-primary/30 disabled:opacity-40 disabled:hover:bg-black/[0.02] disabled:hover:border-black/10 transition-all"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
+
+        {hasMore && currentIndex === visibleCards.length - 1 && (
+          <button
+            onClick={loadMore}
+            className="mt-6 inline-flex items-center gap-1.5 text-sm text-primary hover:text-primary/80 transition-colors"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            Load {Math.min(LOAD_STEP, flashcards.length - visibleCount)} more flashcards
+          </button>
+        )}
       </div>
     </DashboardLayout>
   )

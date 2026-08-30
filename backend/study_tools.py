@@ -13,12 +13,62 @@ STOPWORDS = {
 
 
 def _extract_text(summary):
-    """Summaries are stored as either a structured {overview, key_points} dict
-    (current schema) or a plain string (older notes). Normalize to one string."""
+    """Summaries are stored as either a structured {overview, key_points,
+    paragraphs} dict (current schema) or a plain string (older notes).
+    Normalize to one string."""
     if isinstance(summary, dict):
-        parts = [summary.get("overview", "")] + list(summary.get("key_points", []))
+        parts = (
+            [summary.get("overview", "")]
+            + list(summary.get("key_points", []))
+            + list(summary.get("paragraphs", []))
+        )
         return " ".join(p for p in parts if p)
     return summary or ""
+
+
+def group_into_paragraphs(sentences, size=5):
+    """Group a flat sentence list into `size`-sentence paragraphs, for the
+    "Quick Summary" display mode — flowing prose instead of a bullet list."""
+    return [
+        " ".join(sentences[i:i + size])
+        for i in range(0, len(sentences), size)
+    ]
+
+
+def _extract_sentences(source):
+    """Source is either the uncapped study_pool list (current schema, one
+    sentence per item — no re-splitting needed) or a structured/plain summary
+    (older notes, or the concise display summary as a fallback)."""
+    if isinstance(source, list):
+        return [s.strip() for s in source if s and len(s.strip()) >= 25]
+    return split_sentences(_extract_text(source))
+
+
+# Tiered flashcard/MCQ limits by video length. `min` is what's generated
+# up front; the "Load more" action in the UI reveals up to `max`.
+# `max_chunks` controls how much of the transcript summarizer.generate_summary
+# processes (each chunk is ~3000 chars), so longer videos get most/all of
+# their transcript summarized instead of being cut off after a fixed prefix
+# regardless of length — a 1-hour lecture needs far more than a 5-minute clip.
+_STUDY_KIT_TIERS = [
+    # (minutes_below, flashcards, mcqs, max_chunks)
+    (5, {"min": 5, "max": 5}, {"min": 5, "max": 5}, 8),
+    (10, {"min": 10, "max": 15}, {"min": 15, "max": 20}, 15),
+    (15, {"min": 10, "max": 20}, {"min": 15, "max": 25}, 25),
+]
+_STUDY_KIT_DEFAULT = ({"min": 10, "max": 30}, {"min": 15, "max": 35}, 40)
+
+
+def get_study_limits(duration_seconds):
+    """Map a video's duration to its flashcard/MCQ min & max counts."""
+    minutes = (duration_seconds or 0) / 60
+
+    for cutoff, flashcards, mcqs, max_chunks in _STUDY_KIT_TIERS:
+        if minutes < cutoff:
+            return {"flashcards": flashcards, "mcqs": mcqs, "max_chunks": max_chunks}
+
+    flashcards, mcqs, max_chunks = _STUDY_KIT_DEFAULT
+    return {"flashcards": flashcards, "mcqs": mcqs, "max_chunks": max_chunks}
 
 
 def split_sentences(text):
@@ -47,8 +97,8 @@ def _key_term(sentence):
     return max(pool, key=len)
 
 
-def generate_flashcards(summary_text, count=8):
-    sentences = split_sentences(_extract_text(summary_text))
+def generate_flashcards(source, count=8):
+    sentences = _extract_sentences(source)
     flashcards = []
 
     for i, sentence in enumerate(sentences[:count]):
@@ -63,8 +113,8 @@ def generate_flashcards(summary_text, count=8):
     return flashcards
 
 
-def generate_mcqs(summary_text, count=5):
-    sentences = split_sentences(_extract_text(summary_text))
+def generate_mcqs(source, count=5):
+    sentences = _extract_sentences(source)
     if not sentences:
         return []
 

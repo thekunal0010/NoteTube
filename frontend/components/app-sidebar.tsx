@@ -11,7 +11,6 @@ import {
   ListChecks,
   History,
   Settings,
-  Sparkles,
   LifeBuoy,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
@@ -46,9 +45,7 @@ export function AppSidebar() {
     <aside className="glass-sidebar w-64 min-h-screen flex flex-col relative z-20">
       {/* Logo — links back to the public landing page without logging out */}
       <Link href="/" className="p-6 flex items-center gap-3 hover:opacity-80 transition-opacity">
-        <div className="w-10 h-10 rounded-xl gradient-accent flex items-center justify-center">
-          <Sparkles className="w-5 h-5 text-primary-foreground" />
-        </div>
+        <img src="/logo.png" alt="NoteTube AI" className="w-10 h-10 object-contain" />
         <span className="text-xl font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
       </Link>
 

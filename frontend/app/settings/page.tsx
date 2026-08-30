@@ -16,6 +16,7 @@ import {
   ChevronDown,
   Loader2,
 } from "lucide-react"
+import { STUDY_MODES, DEFAULT_STUDY_MODE, getStoredStudyMode, type StudyMode } from "@/lib/study-mode"
 
 const PREFS_KEY = "notetube_prefs"
 
@@ -23,14 +24,14 @@ interface Prefs {
   darkMode: boolean
   notifications: boolean
   language: string
-  studyMode: string
+  studyMode: StudyMode
 }
 
 const defaultPrefs: Prefs = {
   darkMode: true,
   notifications: true,
   language: "English",
-  studyMode: "Comprehensive Notes",
+  studyMode: DEFAULT_STUDY_MODE,
 }
 
 export default function SettingsPage() {
@@ -48,7 +49,8 @@ export default function SettingsPage() {
 
     try {
       const stored = localStorage.getItem(PREFS_KEY)
-      if (stored) setPrefs({ ...defaultPrefs, ...JSON.parse(stored) })
+      const parsed = stored ? JSON.parse(stored) : {}
+      setPrefs({ ...defaultPrefs, ...parsed, studyMode: getStoredStudyMode() })
     } catch {
       // ignore malformed local prefs
     }
@@ -84,7 +86,8 @@ export default function SettingsPage() {
     setName(localStorage.getItem("name") || "")
     try {
       const stored = localStorage.getItem(PREFS_KEY)
-      setPrefs(stored ? { ...defaultPrefs, ...JSON.parse(stored) } : defaultPrefs)
+      const parsed = stored ? JSON.parse(stored) : {}
+      setPrefs({ ...defaultPrefs, ...parsed, studyMode: getStoredStudyMode() })
     } catch {
       setPrefs(defaultPrefs)
     }
@@ -254,15 +257,18 @@ export default function SettingsPage() {
               <div className="relative">
                 <select
                   value={prefs.studyMode}
-                  onChange={(e) => setPrefs({ ...prefs, studyMode: e.target.value })}
+                  onChange={(e) => setPrefs({ ...prefs, studyMode: e.target.value as StudyMode })}
                   className="w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground appearance-none focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all"
                 >
-                  <option value="Comprehensive Notes">Comprehensive Notes</option>
-                  <option value="Quick Summary">Quick Summary</option>
-                  <option value="Key Points Only">Key Points Only</option>
+                  {STUDY_MODES.map((m) => (
+                    <option key={m.value} value={m.value}>{m.label}</option>
+                  ))}
                 </select>
                 <ChevronDown className="absolute right-4 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
               </div>
+              <p className="text-xs text-muted-foreground mt-2">
+                {STUDY_MODES.find((m) => m.value === prefs.studyMode)?.description}
+              </p>
             </div>
 
             <div className="flex items-center justify-between">

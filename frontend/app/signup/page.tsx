@@ -3,9 +3,10 @@
 import { useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
-import { Sparkles, Eye, EyeOff, Github, Check, Loader2 } from "lucide-react"
+import { Eye, EyeOff, Github, Check, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 import { apiPost } from "@/lib/api"
+import { LegalDialog } from "@/components/legal-dialog"
 
 export default function SignupPage() {
   const [fullName, setFullName] = useState("")
@@ -15,6 +16,7 @@ export default function SignupPage() {
   const [showPassword, setShowPassword] = useState(false)
   const [agreeToTerms, setAgreeToTerms] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [legalDoc, setLegalDoc] = useState<"privacy" | "terms" | null>(null)
   const router = useRouter()
 
   const passwordStrength = () => {
@@ -67,9 +69,7 @@ const handleSignup = async (e: React.FormEvent) => {
         {/* Logo */}
         <div className="text-center mb-8">
           <Link href="/" className="inline-flex items-center gap-2 mb-6">
-            <div className="w-10 h-10 rounded-xl gradient-accent flex items-center justify-center">
-              <Sparkles className="w-5 h-5 text-primary-foreground" />
-            </div>
+            <img src="/logo.png" alt="NoteTube AI" className="w-10 h-10 object-contain" />
             <span className="text-xl font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
           </Link>
           <h1 className="text-2xl font-serif-display font-semibold text-foreground mb-2 tracking-tight">Create your account</h1>
@@ -176,13 +176,21 @@ const handleSignup = async (e: React.FormEvent) => {
               />
               <span className="text-sm text-muted-foreground">
                 I agree to the{" "}
-                <Link href="#" className="text-primary hover:text-primary/80">
+                <button
+                  type="button"
+                  onClick={() => setLegalDoc("terms")}
+                  className="text-primary hover:text-primary/80 underline-offset-2 hover:underline"
+                >
                   Terms of Service
-                </Link>{" "}
+                </button>{" "}
                 and{" "}
-                <Link href="#" className="text-primary hover:text-primary/80">
+                <button
+                  type="button"
+                  onClick={() => setLegalDoc("privacy")}
+                  className="text-primary hover:text-primary/80 underline-offset-2 hover:underline"
+                >
                   Privacy Policy
-                </Link>
+                </button>
               </span>
             </label>
 
@@ -252,6 +260,8 @@ const handleSignup = async (e: React.FormEvent) => {
           </Link>
         </p>
       </div>
+
+      <LegalDialog type={legalDoc} onOpenChange={(open) => !open && setLegalDoc(null)} />
     </div>
   )
 }

@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 import { apiPost, apiGet } from "@/lib/api"
 import { connectSocket, getSocket } from "@/lib/socket"
+import { STUDY_MODES, getStoredStudyMode, setStoredStudyMode, type StudyMode } from "@/lib/study-mode"
 
 const steps = [
   {
@@ -43,10 +44,12 @@ export default function DashboardPage() {
   const [progress, setProgress] = useState({ stage: "", percent: 0 })
   const [name, setName] = useState("")
   const [recentNote, setRecentNote] = useState<RecentNote | null>(null)
+  const [studyMode, setStudyMode] = useState<StudyMode>("comprehensive")
   const router = useRouter()
 
   useEffect(() => {
     setName(localStorage.getItem("name") || "")
+    setStudyMode(getStoredStudyMode())
 
     apiGet("/notes")
       .then((data) => setRecentNote(data.notes?.[0] || null))
@@ -77,6 +80,7 @@ export default function DashboardPage() {
       const data = await apiPost("/summary", {
         youtubeUrl,
         sid: socket?.id,
+        mode: studyMode,
       })
 
       toast.success("Notes generated successfully")
@@ -129,8 +133,32 @@ export default function DashboardPage() {
             onChange={(e) => setYoutubeUrl(e.target.value)}
             disabled={loading}
             onKeyDown={(e) => e.key === "Enter" && !loading && handleGenerateNotes()}
-            className="w-full px-4 py-4 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all mb-4 disabled:opacity-60"
+            className="w-full px-4 py-4 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all mb-3 disabled:opacity-60"
           />
+
+          {/* Summary style */}
+          <div className="flex flex-wrap items-center gap-2 mb-4">
+            <span className="text-xs text-muted-foreground mr-0.5">Summary style:</span>
+            {STUDY_MODES.map((m) => (
+              <button
+                key={m.value}
+                type="button"
+                title={m.description}
+                disabled={loading}
+                onClick={() => {
+                  setStudyMode(m.value)
+                  setStoredStudyMode(m.value)
+                }}
+                className={`px-3 py-1.5 rounded-full text-xs font-medium border transition-all disabled:opacity-60 ${
+                  studyMode === m.value
+                    ? "bg-primary/12 border-primary/40 text-foreground"
+                    : "bg-black/[0.02] border-black/10 text-muted-foreground hover:bg-black/[0.04] hover:border-black/20"
+                }`}
+              >
+                {m.label}
+              </button>
+            ))}
+          </div>
 
           {/* Generate Button */}
           <button

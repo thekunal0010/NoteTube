@@ -31,46 +31,62 @@ def _chunk_text(text, max_chunk=3000):
 
 
 def _structure_summary(chunk_summaries):
-    """Turn a list of raw chunk summaries into an Overview + Key Points structure,
-    similar to how a student would actually organize lecture notes."""
+    """Turn the raw per-chunk summaries into an overview string plus a
+    deduplicated pool of sentences, in original order.
+
+    The overview length scales with how much material there is — a one-line
+    intro is fine for a 3-minute clip, but a real lecture needs a few
+    sentences to actually summarize its span rather than just its opener.
+    The remaining sentences are the pool the notes page's Key Points and the
+    flashcards/MCQs both draw from — how many of them get shown is a display
+    decision made by the caller (app.py), scaled to video length there.
+    """
 
     sentences = []
     for chunk in chunk_summaries:
         parts = re.split(r"(?<=[.!?])\s+", chunk.strip())
         sentences.extend(s.strip() for s in parts if s.strip())
 
-    if not sentences:
-        return {"overview": "", "key_points": []}
-
-    overview_count = 2 if len(sentences) > 4 else 1
-    overview = " ".join(sentences[:overview_count])
-
     seen = set()
-    key_points = []
-    for sentence in sentences[overview_count:]:
+    deduped = []
+    for sentence in sentences:
         normalized = sentence.lower()
         if len(sentence) < 25 or normalized in seen:
             continue
         seen.add(normalized)
-        key_points.append(sentence)
-        if len(key_points) >= 10:
-            break
+        deduped.append(sentence)
 
-    return {"overview": overview, "key_points": key_points}
+    if not deduped:
+        return "", []
+
+    if len(deduped) <= 8:
+        overview_count = min(2, len(deduped))
+    elif len(deduped) <= 20:
+        overview_count = 3
+    else:
+        overview_count = 5
+
+    overview = " ".join(deduped[:overview_count])
+    study_pool = deduped[overview_count:]
+
+    return overview, study_pool
 
 
 def generate_summary(text, max_chunks=6, progress_callback=None):
-    """Summarize a transcript into a structured {overview, key_points} dict.
+    """Summarize a transcript into (overview, study_pool).
 
     Chunks are sized close to BART's ~1024 token input limit so each
     summarization call sees as much surrounding context as possible,
     producing more coherent, less choppy output than many tiny chunks would.
+    `max_chunks` scales with video length (see study_tools.get_study_limits)
+    so longer lectures get most/all of their transcript summarized instead of
+    being cut off after the first ~18,000 characters regardless of length.
     """
 
     chunks = _chunk_text(text, max_chunk=3000)[:max_chunks]
 
     if not chunks:
-        return {"overview": "", "key_points": []}
+        return "", []
 
     summaries = []
     total = len(chunks)
