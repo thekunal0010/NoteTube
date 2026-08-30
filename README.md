@@ -13,16 +13,28 @@ Turn any YouTube video into study material. Paste a link and NoteTube pulls the 
 ## Tech Stack
 
 **Backend**
-- Flask + Flask-SocketIO (REST API + WebSocket progress updates)
-- MongoDB (via PyMongo / Flask-PyMongo)
-- JWT auth (PyJWT + bcrypt)
-- `youtube-transcript-api` for transcript extraction
-- Hugging Face `transformers` / `torch` for summarization
+- **Framework**: Flask, Flask-SocketIO (WebSocket progress updates), Flask-CORS, Flask-PyMongo
+- **Database**: MongoDB (via PyMongo)
+- **Auth**: PyJWT (JSON Web Tokens), bcrypt (password hashing)
+- **Transcript extraction**: youtube-transcript-api, defusedxml
+- **NLP / summarization**: Hugging Face `transformers`, `torch`, `tokenizers`, `sentencepiece`, `safetensors`, `huggingface_hub`, `numpy`, `sympy`, `networkx`
+- **Realtime**: python-socketio, python-engineio, simple-websocket, wsproto
+- **Utilities**: python-dotenv, requests, PyYAML, Werkzeug, Jinja2, itsdangerous, click, tqdm
 
 **Frontend**
-- Next.js 16 (React 19, TypeScript)
-- Tailwind CSS + Radix UI + shadcn-style components
-- `socket.io-client` for live progress updates
+- **Framework**: Next.js 16 (App Router), React 19, TypeScript
+- **Styling**: Tailwind CSS 4, tailwind-merge, tw-animate-css, class-variance-authority, clsx, autoprefixer, PostCSS
+- **UI components**: Radix UI primitives (accordion, alert-dialog, avatar, checkbox, dialog, dropdown-menu, popover, select, tabs, toast, tooltip, and more), shadcn-style component library, `lucide-react` icons, `cmdk` (command menu), `vaul` (drawers), `sonner` (toasts)
+- **Forms & validation**: react-hook-form, @hookform/resolvers, zod
+- **Data & charts**: recharts, date-fns, react-day-picker
+- **Animation & interaction**: framer-motion, lenis (smooth scroll), embla-carousel-react, react-resizable-panels
+- **Realtime**: socket.io-client (consumes backend progress events)
+- **Other**: axios (HTTP client), next-themes (dark mode), @vercel/analytics
+
+**Tooling**
+- ESLint, TypeScript compiler
+- pnpm / npm for package management
+- Python venv for backend dependency isolation
 
 ## Project Structure
 
