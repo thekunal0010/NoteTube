@@ -9,11 +9,16 @@ file; do not rewrite prior entries.
 
 **Phase 1 complete (committed `02484bb`):** Transcript provider migration to
 Supadata, live-verified against the real API on 3 videos.
-**Phase 2 complete (uncommitted):** Backend containerization + dependency split.
-Production image builds at **255 MB** against a 4.7 GB local venv, runs healthy
-with WebSocket working, and carries no torch.
-**Next phase:** Gemini AI provider behind `llm.py`'s existing seam.
-**Not started:** AWS/EC2 deployment, Render deployment, Nginx.
+**Phase 2 complete (committed `ff2d44e`):** Backend containerization +
+dependency split. Production image builds at **255 MB** against a 4.7 GB local
+venv, runs healthy with WebSocket working, and carries no torch.
+**Phase 3 complete (uncommitted):** Gemini is the production AI provider,
+behind the existing `llm.py` seam. Local Qwen preserved and verified working.
+**Live-verified** against the real API on 2026-09-02 (one request).
+**Phase 4 complete (uncommitted):** Production hardening — password-reset token
+no longer returned by the API, CORS/Socket.IO origins configurable, frontend
+backend URL configurable.
+**Next phase:** AWS/EC2 + Nginx + Render deployment.
 
 ---
 
@@ -373,16 +378,276 @@ logs and editor cruft.
 
 ---
 
+## Phase 3 — Gemini integration (2026-09-01)
+
+Closes Phase 2's risk 3 (the container had no AI provider).
+
+### Decision: Gemini via the `google-genai` SDK
+
+`google-genai==2.21.0`, **not** the older `google-generativeai`. The API shape
+was verified by introspecting the installed package rather than trusting docs,
+which caught two things a guess would have got wrong:
+
+- The current call is `client.interactions.create(model=, input=,
+  system_instruction=, generation_config=)` returning `.output_text` — not the
+  `generate_content` shape found in most older material.
+- **`HttpOptions.timeout` is in milliseconds, not seconds.**
+
+Errors are `google.genai.errors.APIError` with `ClientError` (4xx) and
+`ServerError` (5xx) subclasses carrying `.code`. The SDK already retries
+transient failures ~4 times with backoff before raising.
+
+### Model: `gemini-3.5-flash-lite`
+
+Google's documented economy tier — "fastest, most cost-effective... for
+high-throughput execution". NoteTube's calls are short, templated extraction
+prompts over transcript chunks, which is exactly that shape. This is a
+low-traffic learning project, so a frontier model would be paid for and wasted.
+Override with `NOTETUBE_GEMINI_MODEL`.
+
+### Architecture
+
+Same split as `transcript.py`/`supadata.py`: a router module holding the local
+implementation inline, delegating the hosted provider to its own module.
+
+- **`gemini.py` (new)** — thin client. `is_configured()`, `generate()`,
+  `GeminiError`. The SDK is imported lazily so `llm.py` still imports where it
+  is not installed.
+- **`llm.py`** — now routes on `NOTETUBE_LLM_PROVIDER`. Qwen internals
+  unchanged. **Public interface is byte-identical**: `BATCH_SIZE`,
+  `is_available()`, `chat(system, user, max_new_tokens=512)`,
+  `chat_batch(system, users, max_new_tokens=512)`.
+- **`summarizer.py` and `study_tools.py` were not modified at all.** The seam
+  built in earlier phases did its job — all six call sites work unchanged.
+
+### Provider selection
+
+`NOTETUBE_LLM_PROVIDER`: `gemini` (default) or `local`.
+
+**No silent fallback, in either direction.** A missing `GEMINI_API_KEY` makes
+`is_available()` return False and never touches the local model — falling back
+would turn a config mistake into a 3.1 GB Qwen load on a machine with no GPU.
+This mirrors the transcript provider's rule and is covered by a test.
+
+`is_available()` means "configured and ready to try", not "reachable" — it
+spends no quota. A provider that is available and *then* fails raises rather
+than returning nothing, so a live outage is never mistaken for "the model had
+nothing to say".
+
+Existing behaviour at the call sites is unchanged: `summarizer` lets the error
+surface as a 500 (no fabricated summary), while `study_tools` keeps its
+pre-existing `try/except` that logs and degrades to the deterministic heuristic
+generators — those are plain text manipulation, not invented AI output.
+
+### AI behaviour preserved
+
+Prompts, parsing, batch ordering and token caps are untouched.
+`max_new_tokens` maps to `max_output_tokens`; `temperature=0` matches the local
+path's greedy decoding, so the same video keeps producing the same notes.
+
+`chat_batch` issues **one request per prompt, sequentially**. Gemini has no
+batch endpoint here, and firing a whole batch concurrently is the quickest way
+to trip the free tier's rate limit at this project's size. `BATCH_SIZE` still
+groups the caller's loop.
+
+### Dependencies
+
+Added to production: **`google-genai==2.21.0`** only. Its tree (httpx, pydantic,
+google-auth, anyio, tenacity, websockets) is left to pip — hand-pinning part of
+a large interdependent tree invites resolver conflicts.
+
+No torch, transformers, CUDA or Qwen packages entered `requirements.txt`
+(verified against requirement lines with comments stripped).
+`requirements-local.txt` is unchanged and still carries the full ML stack.
+
+### Environment variables
+
+| Variable | Required | Default | Purpose |
+|---|---|---|---|
+| `GEMINI_API_KEY` | yes in production | — | Gemini auth. **Backend only** — never exposed to the frontend, never `NEXT_PUBLIC_` |
+| `NOTETUBE_LLM_PROVIDER` | no | `gemini` | `gemini` or `local` |
+| `NOTETUBE_GEMINI_MODEL` | no | `gemini-3.5-flash-lite` | Model override |
+| `NOTETUBE_GEMINI_TIMEOUT_MS` | no | `90000` | Request timeout, **milliseconds** |
+
+### Tests performed (Phase 3)
+
+`test_llm.py` (new, 25 tests) — **no live Gemini calls**; the client is stubbed
+and real `google.genai.errors` instances drive the status-mapping tests.
+
+| Test area | Result |
+|---|---|
+| `llm.py` imports with no torch; module exposes no torch attribute | **PASS** |
+| Public interface unchanged (`BATCH_SIZE`, `is_available`, `chat`, `chat_batch`) | **PASS** |
+| `summarizer`/`study_tools` still reach AI only through `llm` | **PASS** |
+| Defaults to `gemini`; unknown provider rejected | **PASS** |
+| Missing key → unavailable, and **does not** load the local model | **PASS** |
+| Success normalized into the existing contract; order preserved; one call per prompt | **PASS** |
+| Prompt/system/token cap reach the API intact; `temperature=0` | **PASS** |
+| Missing key, 400/401/403/429, 5xx, transport error all mapped | **PASS** |
+| Empty (`""`, whitespace, `None`) and malformed responses raise | **PASS** |
+| API failure propagates through `chat_batch` (not swallowed as empty) | **PASS** |
+| API key never appears in an error message | **PASS** |
+| **Existing 22 transcript tests, unmodified** | **PASS** |
+| Full suite (47 tests) | **PASS** |
+| Production simulation: no torch + gemini selected, all modules import | **PASS** |
+| Local Qwen still loads on GPU and generates | **PASS** |
+
+Supadata was **not** called during Phase 3 (transcript tests are fully stubbed).
+Docker was **not** rebuilt or rerun.
+
+### Open risks (Phase 3)
+
+1. **No live Gemini call has ever been made.** The client is written against
+   the introspected SDK surface and is stub-tested only. The first real request
+   is unproven — model name, quota and response shape need one live check
+   before deployment.
+2. **Sequential requests.** A 5-hour video is ~16 chunk calls one after
+   another. Correct and rate-limit-safe, but latency adds up; bounded
+   concurrency is the obvious optimisation once a live baseline exists.
+3. **Default provider changed to `gemini`.** Existing local `.env` files need
+   `NOTETUBE_LLM_PROVIDER=local` (or a Gemini key) or local generation will
+   report the provider as unconfigured.
+4. Only the direct SDK version is pinned, so its transitive tree can drift
+   between builds.
+
+---
+
+## Live Gemini verification (2026-09-02)
+
+One request, through the real path `llm.chat` → `chat_batch` →
+`gemini.generate` → SDK. Closes Phase 3's risk 1.
+
+| | |
+|---|---|
+| Result | **SUCCESS** on first attempt, no retries |
+| Model | `gemini-3.5-flash-lite` — accepted |
+| Prompt | `Reply with exactly: GEMINI_TEST_OK` |
+| Reply | `GEMINI_TEST_OK` — exact match |
+| Latency | 6.39 s |
+
+Confirms authentication, the model name, the `interactions.create` call shape,
+`.output_text` extraction, and that provider routing reaches Gemini.
+
+**The 6.39 s is a cold-start figure** — it includes SDK import, client
+construction and TLS setup. It is not a per-request steady-state latency and
+should not be multiplied out to estimate a full generation.
+
+---
+
+## Phase 4 — Production hardening (2026-09-02)
+
+### Password reset: token no longer returned by the API
+
+`/forgot-password` returned `resetToken` in its response body, so anyone who
+knew an email address could mint a working token for it and take the account
+over. That is now withheld by default.
+
+There is **no email delivery in this application**, and inventing one was out
+of scope, so the token is instead gated behind `NOTETUBE_EXPOSE_RESET_TOKEN=1`
+for local development. Production leaves it unset, which makes the endpoint
+safe but means **the reset flow cannot be completed by a real user until email
+delivery exists**. That is a deliberate, documented limitation rather than a
+half-working mechanism.
+
+The frontend already tolerates the token's absence (`app/forgot-password`
+only renders the link `if (data.resetToken)`), so nothing there changed.
+
+**Reset tokens are now single-use.** They previously stayed valid for their
+full 15 minutes and could be replayed. The token now carries `pw`, a short
+digest of the password hash it was issued against; completing a reset changes
+the hash, so that token — and any minted earlier — stops verifying. No token
+store or new dependency needed.
+
+The unchanged-by-design behaviour: the endpoint still returns the same response
+for known and unknown addresses, so it does not reveal who has an account.
+
+### CORS and Socket.IO origins
+
+Both were `"*"`, which let any site on the internet script authenticated calls
+against the API with a phished token and open a progress socket. Both now read
+`NOTETUBE_ALLOWED_ORIGINS` (comma-separated) via `app._allowed_origins()`.
+
+Unset defaults to `http://localhost:3000,http://127.0.0.1:3000` — local
+development only. Any other origin (a LAN address used for testing on a phone,
+or the deployed frontend) must be listed explicitly; a default that guessed
+would either break a setup or quietly reopen the hole. `"*"` is still reachable
+for a throwaway experiment but must be asked for by name and logs a warning.
+
+### Frontend backend URL
+
+`getBackendUrl()` (`frontend/lib/api.ts`) derived the backend from
+`window.location.hostname:5000`, which can only ever find a backend on the same
+machine as the browser — unworkable for a frontend on Render talking to a
+backend on EC2. It now prefers `NEXT_PUBLIC_API_URL` when set, falling back to
+the existing behaviour so local development still needs no configuration.
+
+`lib/socket.ts` already imports `getBackendUrl()`, so WebSocket traffic follows
+the same setting. Verified there are no other hard-coded backend endpoints in
+`frontend/`.
+
+New `frontend/.env.example` documents the variable and warns that anything
+`NEXT_PUBLIC_` is embedded in the browser bundle and must never hold a secret.
+
+### Environment variables added
+
+| Variable | Where | Default | Purpose |
+|---|---|---|---|
+| `NOTETUBE_ALLOWED_ORIGINS` | backend | `http://localhost:3000,http://127.0.0.1:3000` | CORS + Socket.IO origins |
+| `NOTETUBE_EXPOSE_RESET_TOKEN` | backend | unset (off) | Dev only — returns the reset token |
+| `NEXT_PUBLIC_API_URL` | frontend | unset (derive from page host) | Backend base URL |
+
+### Tests performed (Phase 4)
+
+`test_hardening.py` (new, 16 tests). Offline — `db.py` opens a MongoClient at
+import time and resolves the Atlas SRV record over the network, so the module
+is stubbed in `sys.modules` before `auth` is imported. No database, no
+Supadata, no Gemini.
+
+| Test area | Result |
+|---|---|
+| Reset token withheld by default, and for any flag value other than `"1"` | **PASS** |
+| Reset token returned only when explicitly enabled | **PASS** |
+| Response identical for known and unknown addresses | **PASS** |
+| Valid token resets the password | **PASS** |
+| Token cannot be replayed; attacker's password not applied | **PASS** |
+| Token minted before an earlier reset is rejected | **PASS** |
+| Expired / wrong-purpose / wrong-key tokens rejected | **PASS** |
+| Origins default to localhost, never `"*"`; list parsed and trimmed | **PASS** |
+| `"*"` only when asked for by name | **PASS** |
+| Socket.IO actually receives the configured origins | **PASS** |
+| Full backend suite (63 tests) | **PASS** |
+| Frontend `tsc --noEmit` | **PASS** |
+
+Docker was not rebuilt or rerun. Supadata was not called. No additional live
+Gemini request was made.
+
+### Open risks (Phase 4)
+
+1. **`JWT_SECRET` is 19 bytes.** PyJWT warns during signing:
+   `InsecureKeyLengthWarning: The HMAC key is 19 bytes long, which is below the
+   minimum recommended length of 32 bytes for SHA256` (RFC 7518 §3.2). This key
+   signs both session tokens and password-reset tokens, so a weak one
+   undermines both. **Rotate to ≥32 random bytes before deploying** — note that
+   rotating invalidates every existing session, so it is a deliberate action,
+   not a code change. Discovered incidentally during Phase 4 testing; not fixed
+   here because the value is the operator's to choose.
+2. **Password reset is incomplete in production** by design, until email
+   delivery exists (see above).
+3. **Changing a password does not invalidate existing sessions.** Previously
+   issued JWTs remain valid until they expire, so a reset does not evict an
+   attacker who already holds a token.
+4. `NOTETUBE_ALLOWED_ORIGINS` must be set at deploy time or the deployed
+   frontend will be blocked by CORS. This is intentional — it fails closed.
+
+---
+
 ## Next planned phase
 
-**Gemini provider**, behind `llm.py`'s existing `is_available()` / `chat()` /
-`chat_batch()` seam — all six call sites already route through it, so
-`summarizer.py` and `study_tools.py` need no changes. Add the client to
-`requirements.txt` (production) and a `GEMINI_API_KEY` env var, mirroring the
-Supadata pattern in `supadata.py`. That closes risk 3 above and makes the
-container genuinely deployable.
+Deployment: AWS/EC2 + Nginx + Render.
 
-Then: AWS/EC2 + Nginx + Render deployment.
+Before deploying: rotate `JWT_SECRET` (risk 1), set `NOTETUBE_ALLOWED_ORIGINS`
+to the real frontend origin, and set `NEXT_PUBLIC_API_URL` to the real backend
+URL.
 
 ---
 

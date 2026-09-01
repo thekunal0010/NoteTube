@@ -24,7 +24,41 @@ STUDY_MODES = {"comprehensive", "quick", "key_points"}
 load_dotenv()
 
 app = Flask(__name__)
-CORS(app)
+
+
+def _allowed_origins():
+    """Origins permitted to call the API and open a Socket.IO connection.
+
+    Comma-separated in NOTETUBE_ALLOWED_ORIGINS. Was an unrestricted "*", which
+    let any site on the internet script authenticated calls against this API
+    using a token it had phished, and open a progress socket.
+
+    The default covers a local frontend only. Anything else — a LAN address
+    used for testing on another device, or the deployed frontend's domain —
+    has to be listed explicitly, because a default that guesses would either
+    break someone's setup or quietly re-open the hole.
+    """
+    configured = (os.getenv("NOTETUBE_ALLOWED_ORIGINS") or "").strip()
+
+    if not configured:
+        return ["http://localhost:3000", "http://127.0.0.1:3000"]
+
+    # "*" stays reachable for a throwaway local experiment, but only by asking
+    # for it by name rather than by leaving the variable unset.
+    if configured == "*":
+        print(
+            "[app] WARNING: NOTETUBE_ALLOWED_ORIGINS=* allows any origin. "
+            "Do not use this in production.",
+            flush=True,
+        )
+        return "*"
+
+    return [origin.strip() for origin in configured.split(",") if origin.strip()]
+
+
+_ALLOWED_ORIGINS = _allowed_origins()
+
+CORS(app, origins=_ALLOWED_ORIGINS)
 app.register_blueprint(auth)
 
 # "threading" locally (Werkzeug's dev server serves WebSocket through
@@ -34,7 +68,11 @@ app.register_blueprint(auth)
 # point, which must monkey-patch before anything else is imported.
 _ASYNC_MODE = os.getenv("NOTETUBE_SOCKETIO_ASYNC_MODE") or "threading"
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode=_ASYNC_MODE)
+socketio = SocketIO(
+    app,
+    cors_allowed_origins=_ALLOWED_ORIGINS,
+    async_mode=_ASYNC_MODE,
+)
 
 
 def _serialize_note(note):

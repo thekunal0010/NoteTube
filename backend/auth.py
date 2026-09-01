@@ -2,6 +2,7 @@ from flask import Blueprint, request, jsonify
 from functools import wraps
 from db import users_collection, notes_collection
 import bcrypt
+import hashlib
 import jwt
 import datetime
 import os
@@ -12,6 +13,33 @@ load_dotenv()
 auth = Blueprint("auth", __name__)
 
 SECRET_KEY = os.getenv("JWT_SECRET")
+
+
+def _reset_token_is_exposed():
+    """Whether /forgot-password may return the reset token in its response.
+
+    Off unless explicitly switched on. There is no email delivery in this
+    application, so returning the token was the only way to complete a reset —
+    but it also meant anyone who knew an address could mint a working token for
+    it and take the account over. Production must never enable this; see the
+    note on /forgot-password.
+    """
+    return os.getenv("NOTETUBE_EXPOSE_RESET_TOKEN") == "1"
+
+
+def _password_fingerprint(hashed_password):
+    """Short digest of the stored password hash, used to make reset tokens
+    single-use.
+
+    A reset token is a stateless JWT, so nothing stops it being replayed until
+    it expires. Binding it to the password it was issued against means the
+    first successful reset changes the hash and every token minted before it
+    stops verifying — no token store or extra dependency needed.
+    """
+    if isinstance(hashed_password, str):
+        hashed_password = hashed_password.encode("utf-8")
+
+    return hashlib.sha256(hashed_password).hexdigest()[:16]
 
 
 def token_required(f):
@@ -173,13 +201,24 @@ def forgot_password():
     reset_token = jwt.encode({
         "email": email,
         "purpose": "password_reset",
+        # Ties the token to the password it was issued against, so using it
+        # once invalidates it (see _password_fingerprint).
+        "pw": _password_fingerprint(user["password"]),
         "exp": datetime.datetime.utcnow() + datetime.timedelta(minutes=15)
     }, SECRET_KEY, algorithm="HS256")
 
-    return jsonify({
-        "message": "If that account exists, a reset link has been generated",
-        "resetToken": reset_token
-    })
+    response = {"message": "If that account exists, a reset link has been generated"}
+
+    # The token is withheld by default. This application has no email delivery,
+    # so there is currently no secure way to hand a reset link to its owner —
+    # and returning it here let anyone who knew an address take over the
+    # account. Local development can opt in with NOTETUBE_EXPOSE_RESET_TOKEN=1;
+    # production must leave it unset, which makes the endpoint safe but the
+    # reset flow incomplete until email delivery exists.
+    if _reset_token_is_exposed():
+        response["resetToken"] = reset_token
+
+    return jsonify(response)
 
 
 @auth.route("/account", methods=["DELETE"])
@@ -213,6 +252,17 @@ def reset_password():
         return jsonify({"message": "Invalid reset link"}), 401
 
     email = payload.get("email")
+
+    user = users_collection.find_one({"email": email})
+    if not user:
+        return jsonify({"message": "User not found"}), 404
+
+    # Single use: the token carries a fingerprint of the password it was issued
+    # against, so once a reset goes through, that token (and any other minted
+    # earlier) no longer matches and cannot be replayed within its lifetime.
+    if payload.get("pw") != _password_fingerprint(user["password"]):
+        return jsonify({"message": "This reset link has already been used"}), 401
+
     hashed_password = bcrypt.hashpw(new_password.encode("utf-8"), bcrypt.gensalt())
 
     result = users_collection.update_one(

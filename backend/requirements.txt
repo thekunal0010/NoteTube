@@ -59,6 +59,14 @@ PyJWT==2.12.1
 # --- Config ---
 python-dotenv==1.2.2
 
+# --- Gemini AI provider ---
+# The current official SDK. `google-generativeai` is the older package; this
+# one exposes client.interactions.create(...) and is what the live API docs
+# document. Only the direct dependency is pinned — its tree (httpx, pydantic,
+# google-auth, anyio, tenacity, websockets and their own children) is large and
+# interdependent, and hand-pinning part of it invites resolver conflicts.
+google-genai==2.21.0
+
 # --- Supadata transcript provider (HTTP) ---
 requests==2.33.1
 certifi==2026.4.22

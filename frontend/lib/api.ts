@@ -1,4 +1,17 @@
+/** Base URL of the backend API.
+ *
+ * `NEXT_PUBLIC_API_URL` wins when set, which is how a deployed frontend reaches
+ * a backend on a different host — the fallback below derives the host from the
+ * page, so it can only ever find a backend sitting on the same machine.
+ *
+ * The fallback is kept so local development works with no configuration: it
+ * resolves to localhost:5000 when browsing locally, and to the LAN address when
+ * testing from another device on the network.
+ */
 export function getBackendUrl() {
+  const configured = process.env.NEXT_PUBLIC_API_URL?.trim()
+  if (configured) return configured.replace(/\/+$/, "")
+
   if (typeof window === "undefined") return ""
   return `http://${window.location.hostname}:5000`
 }

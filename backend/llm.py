@@ -1,13 +1,26 @@
-"""Small instruction-tuned model used to turn transcripts into actual study notes.
+"""The AI seam: turns transcripts into actual study notes.
 
 BART could only compress what it was given, so a tutorial transcript came back as
 narration — "in this lecture I'm going to show you decorators" rather than what a
 decorator is. An instruct model can be *told* what to extract, which is the whole
 reason for this module.
 
-Loaded once at import, greedy-decoded so the same video always yields the same
-notes. Falls back to unavailable (rather than raising) on a machine with no GPU,
-letting summarizer.py use its BART path instead.
+Two providers sit behind one interface — is_available(), chat(), chat_batch()
+and BATCH_SIZE — so summarizer.py and study_tools.py never learn which is in
+use:
+
+  gemini (default) — production. An HTTPS call, so the production image needs
+    no torch at all. Implemented in gemini.py.
+
+  local — Qwen2.5 through torch on a CUDA GPU, for development. Selected
+    explicitly, never as an automatic fallback: silently starting a 3.1GB model
+    load because a production API key was missing would turn a config mistake
+    into an out-of-memory crash on a machine that has no GPU anyway.
+
+Both are greedy/deterministic, so the same video keeps producing the same notes.
+
+Same routing shape as transcript.py, which picks between Supadata and the local
+YouTube library.
 """
 
 import os
@@ -33,7 +46,17 @@ _MODEL_NAME = os.getenv("NOTETUBE_LLM_MODEL") or _DEFAULT_MODEL
 # Prompts are large (a ~10k-char transcript chunk), so the batch is bounded by
 # KV-cache memory rather than compute. 4 measured ~2.3x faster than 2 on a 6GB
 # card; 8 failed to allocate. Lower this first if generation starts OOMing.
+# On the Gemini path this only groups the caller's loop; requests are still
+# issued one at a time.
 BATCH_SIZE = int(os.getenv("NOTETUBE_LLM_BATCH") or 4)
+
+_GEMINI = "gemini"
+_LOCAL = "local"
+_DEFAULT_PROVIDER = _GEMINI
+
+
+def _provider():
+    return (os.getenv("NOTETUBE_LLM_PROVIDER") or _DEFAULT_PROVIDER).strip().lower()
 
 _model = None
 _tokenizer = None
@@ -122,9 +145,26 @@ def _load():
 
 
 def is_available():
-    """True when the instruct model is loaded and usable."""
-    _load()
-    return _model is not None
+    """True when the configured provider is usable.
+
+    Means "configured and ready to try", not "the last call succeeded" — for
+    Gemini this checks the key and SDK without spending a request. A provider
+    that is available but then fails raises rather than returning nothing, so a
+    real outage is never mistaken for an empty result.
+    """
+    provider = _provider()
+
+    if provider == _GEMINI:
+        import gemini
+
+        return gemini.is_configured()
+
+    if provider == _LOCAL:
+        _load()
+        return _model is not None
+
+    print("[llm] unknown NOTETUBE_LLM_PROVIDER %r" % provider, flush=True)
+    return False
 
 
 def _render(system, user):
@@ -139,10 +179,22 @@ def _render(system, user):
 def chat_batch(system, users, max_new_tokens=512):
     """Run one prompt per entry in `users`, returning replies in the same order.
 
-    Returns [] if the model isn't available, so callers can fall back.
+    Returns [] if no provider is configured, so callers can fall back. A
+    configured provider that then fails raises instead — see is_available().
     """
-    if not is_available() or not users:
+    if not users or not is_available():
         return []
+
+    if _provider() == _GEMINI:
+        import gemini
+
+        # One request per prompt, sequentially. Gemini has no batch endpoint
+        # here, and firing the whole batch concurrently is the quickest way to
+        # trip the free tier's rate limit for a project this size.
+        return [
+            gemini.generate(system, user, max_new_tokens).strip()
+            for user in users
+        ]
 
     replies = []
 
