@@ -1,22 +1,25 @@
 "use client"
 
-import { motion } from "framer-motion"
 import { FileText, CreditCard, ListChecks } from "lucide-react"
 
 /**
  * A stacked mockup of the three artefacts NoteTube actually produces —
  * used in place of stock photography so the hero shows the real product,
  * not a generic lifestyle shot.
+ *
+ * The entrance is a CSS animation, not framer-motion: this sits above the
+ * fold, and a JS-driven fade strands the cards half-transparent whenever the
+ * main thread stalls. Only opacity is animated so the Tailwind translate
+ * utilities keep working; the tilt uses the standalone `rotate` property,
+ * which composes with `transform` rather than replacing it.
  */
 export function HeroPreview() {
   return (
     <div className="relative h-[420px] w-full flex items-center justify-center">
       {/* MCQ card, back */}
-      <motion.div
-        initial={{ opacity: 0, rotate: -2, y: 20 }}
-        animate={{ opacity: 1, rotate: -8, y: 0 }}
-        transition={{ duration: 0.7, delay: 0.15, ease: [0.16, 1, 0.3, 1] }}
-        className="absolute w-64 panel rounded-2xl p-5 -translate-x-24 translate-y-10"
+      <div
+        style={{ rotate: "-8deg", animationDelay: "150ms" }}
+        className="animate-fade-in absolute w-64 panel rounded-2xl p-5 -translate-x-24 translate-y-10"
       >
         <div className="flex items-center gap-2 mb-3 text-primary">
           <ListChecks className="w-4 h-4" />
@@ -30,14 +33,12 @@ export function HeroPreview() {
           <div className="h-6 rounded-md bg-black/[0.03] border border-black/5" />
           <div className="h-6 rounded-md bg-black/[0.03] border border-black/5" />
         </div>
-      </motion.div>
+      </div>
 
       {/* Flashcard, middle */}
-      <motion.div
-        initial={{ opacity: 0, rotate: 2, y: 20 }}
-        animate={{ opacity: 1, rotate: 6, y: 0 }}
-        transition={{ duration: 0.7, delay: 0.3, ease: [0.16, 1, 0.3, 1] }}
-        className="absolute w-64 panel rounded-2xl p-5 translate-x-20 -translate-y-6"
+      <div
+        style={{ rotate: "6deg", animationDelay: "300ms" }}
+        className="animate-fade-in absolute w-64 panel rounded-2xl p-5 translate-x-20 -translate-y-6"
       >
         <div className="flex items-center gap-2 mb-3 text-primary">
           <CreditCard className="w-4 h-4" />
@@ -47,14 +48,11 @@ export function HeroPreview() {
           &ldquo;What is spaced repetition?&rdquo;
         </p>
         <p className="text-xs text-muted-foreground mt-3">Tap to reveal answer</p>
-      </motion.div>
+      </div>
 
       {/* Notes card, front */}
-      <motion.div
-        initial={{ opacity: 0, y: 24 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-        className="relative w-72 panel rounded-2xl p-6 ruled-paper"
+      <div
+        className="animate-fade-in relative w-72 panel rounded-2xl p-6 ruled-paper"
       >
         <div className="flex items-center gap-2 mb-4 text-primary">
           <FileText className="w-4 h-4" />
@@ -76,7 +74,7 @@ export function HeroPreview() {
             Activation functions add non-linearity
           </li>
         </ul>
-      </motion.div>
+      </div>
     </div>
   )
 }

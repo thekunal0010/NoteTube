@@ -36,10 +36,18 @@ safetensors==0.7.0
 sentencepiece==0.2.1
 simple-websocket==1.1.0
 sympy==1.14.0
-tokenizers==0.19.1
-torch==2.11.0
+tokenizers==0.20.3
+# CUDA build. Installing this plainly from PyPI silently gives you the CPU-only
+# wheel, which makes summarization ~10-20x slower. Install with:
+#   pip install torch==2.11.0+cu128 --index-url https://download.pytorch.org/whl/cu128
+# On a machine with no NVIDIA GPU, plain `torch==2.11.0` is fine — summarizer.py
+# detects the absence of CUDA and falls back to a lighter model automatically.
+torch==2.11.0+cu128
 tqdm==4.67.3
-transformers==4.41.2
+# 4.45+ is required, not just for qwen2 support: earlier versions compute logits
+# for every prompt position on the prefill pass (batch x seq x 151936 vocab),
+# which is a ~5GB allocation for one batch and OOMs a 6GB card.
+transformers==4.46.3
 typing_extensions==4.15.0
 urllib3==2.7.0
 Werkzeug==3.1.8

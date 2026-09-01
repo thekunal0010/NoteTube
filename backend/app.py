@@ -11,7 +11,13 @@ from auth import auth, token_required
 from db import notes_collection
 from summarizer import generate_summary
 from transcript import get_transcript
-from study_tools import generate_flashcards, generate_mcqs, get_study_limits, group_into_paragraphs
+from study_tools import (
+    generate_flashcards,
+    generate_mcqs,
+    get_study_limits,
+    group_into_paragraphs,
+    select_key_points,
+)
 
 STUDY_MODES = {"comprehensive", "quick", "key_points"}
 
@@ -47,6 +53,20 @@ def _study_pool(note):
     """The uncapped sentence pool flashcards/MCQs are generated from, falling
     back to the (shorter) display summary for notes saved before this field existed."""
     return note.get("study_pool") or note.get("summary") or ""
+
+
+def _stored_or_generate(note, field, generator, count):
+    """Return a note's stored study kit, generating it only if absent.
+
+    Cards are generated once at creation time now. Notes saved before that
+    change have nothing stored, so they fall back to generating on the fly as
+    they always did.
+    """
+    stored = note.get(field)
+    if stored:
+        return stored[:count]
+
+    return generator(_study_pool(note), count=count)
 
 
 def _limits_for(note):
@@ -104,8 +124,12 @@ def summary(current_user_email):
         # How much of the pool feeds the notes page scales with video length
         # too — capped at the tier's MCQ max rather than a flat 10, so a
         # 1-hour lecture actually reads as a full set of notes.
+        #
+        # Selected by informativeness rather than by position: a positional
+        # slice took whatever the speaker happened to say first, which on a
+        # tutorial is the intro and the course promo.
         notes_points_cap = limits["mcqs"]["max"]
-        selected_pool = study_pool[:notes_points_cap]
+        selected_pool = select_key_points(study_pool, notes_points_cap)
 
         if mode == "quick":
             # Flowing paragraphs instead of a bullet list — same amount of
@@ -133,8 +157,19 @@ def summary(current_user_email):
 
         notify("Building your study kit...", 88)
 
-        flashcards = generate_flashcards(study_pool, count=limits["flashcards"]["min"])
-        mcqs = generate_mcqs(study_pool, count=limits["mcqs"]["min"])
+        # Generate the tier's full set once and store it. The /flashcards and
+        # /mcqs endpoints used to regenerate on every page load, which was free
+        # with heuristics but is a multi-second model call now.
+        all_flashcards = generate_flashcards(study_pool, count=limits["flashcards"]["max"])
+
+        # MCQs are built from flashcards, so hand over the ones just made
+        # rather than paying to generate the same cards a second time.
+        all_mcqs = generate_mcqs(
+            study_pool, count=limits["mcqs"]["max"], flashcards=all_flashcards
+        )
+
+        flashcards = all_flashcards[:limits["flashcards"]["min"]]
+        mcqs = all_mcqs[:limits["mcqs"]["min"]]
 
         notify("Saving your notes...", 95)
 
@@ -143,6 +178,8 @@ def summary(current_user_email):
             "youtube_url": youtube_url,
             "summary": structured_summary,
             "study_pool": study_pool,
+            "flashcards": all_flashcards,
+            "mcqs": all_mcqs,
             "duration_seconds": duration_seconds,
             "study_limits": {"flashcards": limits["flashcards"], "mcqs": limits["mcqs"]},
             "created_at": datetime.datetime.utcnow(),
@@ -230,7 +267,9 @@ def get_flashcards(current_user_email):
         return jsonify({"flashcards": []})
 
     limits = _limits_for(note)["flashcards"]
-    flashcards = generate_flashcards(_study_pool(note), count=limits["max"])
+    flashcards = _stored_or_generate(
+        note, "flashcards", generate_flashcards, limits["max"]
+    )
     return jsonify({
         "flashcards": flashcards,
         "min": limits["min"],
@@ -251,7 +290,7 @@ def get_mcqs(current_user_email):
         return jsonify({"mcqs": []})
 
     limits = _limits_for(note)["mcqs"]
-    mcqs = generate_mcqs(_study_pool(note), count=limits["max"])
+    mcqs = _stored_or_generate(note, "mcqs", generate_mcqs, limits["max"])
     return jsonify({
         "mcqs": mcqs,
         "min": limits["min"],
@@ -267,4 +306,17 @@ def handle_connect():
 
 
 if __name__ == '__main__':
-    socketio.run(app, debug=True, host="0.0.0.0", port=5000)
+    # The reloader is off by default. It forks a second process that re-imports
+    # torch and reloads the ~3GB model on every file save, and it left orphaned
+    # workers holding port 5000 whenever a parent died - which made the app look
+    # broken while a stale process answered requests with old code.
+    # Set NOTETUBE_RELOAD=1 while actively editing backend code.
+    use_reloader = os.getenv("NOTETUBE_RELOAD") == "1"
+
+    socketio.run(
+        app,
+        debug=use_reloader,
+        use_reloader=use_reloader,
+        host="0.0.0.0",
+        port=5000,
+    )

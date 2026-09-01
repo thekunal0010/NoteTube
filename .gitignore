@@ -25,3 +25,11 @@ __pycache__/
 # OS / editor cruft
 .DS_Store
 Thumbs.db
+.vscode/
+.idea/
+
+# Runtime logs from local dev/prod server processes
+*.log
+
+# Next.js auto-generates and rewrites this on every dev/build run
+next-env.d.ts

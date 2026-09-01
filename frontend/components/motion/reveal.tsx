@@ -1,6 +1,6 @@
 "use client"
 
-import { motion, type Variants } from "framer-motion"
+import { motion, useReducedMotion, type Variants } from "framer-motion"
 
 interface RevealProps {
   children: React.ReactNode
@@ -38,6 +38,19 @@ export const revealItem: Variants = {
  */
 export function Reveal({ children, className, id, delay = 0, y = 24, stagger = 0, as = "div" }: RevealProps) {
   const Component = motion[as]
+  const reduceMotion = useReducedMotion()
+
+  // Render plainly rather than animating. framer-motion drives opacity through
+  // an inline style, so a CSS `prefers-reduced-motion` rule cannot override it
+  // - the content would simply stay invisible.
+  if (reduceMotion) {
+    const Plain = as
+    return (
+      <Plain id={id} className={className}>
+        {children}
+      </Plain>
+    )
+  }
 
   if (stagger > 0) {
     return (

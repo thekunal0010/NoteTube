@@ -2,6 +2,8 @@ from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api.formatters import TextFormatter
 import re
 
+from text_filters import strip_filler
+
 
 def extract_video_id(url):
 
@@ -56,6 +58,13 @@ def get_transcript(url):
         fetched_transcript = transcript.fetch()
         formatter = TextFormatter()
         text = formatter.format_transcript(fetched_transcript)
+
+        # Drop channel boilerplate (subscribe pitches, greetings, outros) before
+        # anything downstream sees it. Otherwise the summarizer treats it as
+        # course material and the quiz builds questions about the bell icon.
+        # Checked after filtering so a video that is nothing but promo still
+        # reports as empty rather than producing an empty summary.
+        text = strip_filler(text)
 
         if not text or not text.strip():
             return "Transcript Error: The transcript for this video is empty", 0

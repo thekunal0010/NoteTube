@@ -15,6 +15,10 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
   const [agreeToTerms, setAgreeToTerms] = useState(false)
+  // Clicking "Create Account" without ticking the box only raised a toast,
+  // which vanishes; the form just looked broken. This marks the checkbox
+  // itself until it is ticked.
+  const [termsError, setTermsError] = useState(false)
   const [loading, setLoading] = useState(false)
   const [legalDoc, setLegalDoc] = useState<"privacy" | "terms" | null>(null)
   const router = useRouter()
@@ -38,9 +42,12 @@ const handleSignup = async (e: React.FormEvent) => {
   }
 
   if (!agreeToTerms) {
+    setTermsError(true)
     toast.error("Please agree to the Terms of Service and Privacy Policy")
     return
   }
+
+  setTermsError(false)
 
   setLoading(true)
 
@@ -126,22 +133,26 @@ const handleSignup = async (e: React.FormEvent) => {
                   )}
                 </button>
               </div>
-              {/* Password Strength Indicator */}
-              {password.length > 0 && (
-                <div className="mt-2">
-                  <div className="flex gap-1 mb-1">
-                    {[1, 2, 3].map((level) => (
-                      <div
-                        key={level}
-                        className={`h-1 flex-1 rounded-full ${
-                          level <= strength.level ? strength.color : "bg-black/10"
-                        }`}
-                      />
-                    ))}
-                  </div>
-                  <p className="text-xs text-muted-foreground">{strength.text}</p>
-                </div>
-              )}
+              {/* Password Strength Indicator. The wrapper keeps its height even
+                  when empty: appearing on first keystroke used to push Confirm
+                  Password down mid-click, so people missed the field. */}
+              <div className="mt-2 h-6">
+                {password.length > 0 && (
+                  <>
+                    <div className="flex gap-1 mb-1">
+                      {[1, 2, 3].map((level) => (
+                        <div
+                          key={level}
+                          className={`h-1 flex-1 rounded-full ${
+                            level <= strength.level ? strength.color : "bg-black/10"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground">{strength.text}</p>
+                  </>
+                )}
+              </div>
             </div>
 
             <div>
@@ -156,22 +167,32 @@ const handleSignup = async (e: React.FormEvent) => {
                 className="w-full px-4 py-3 rounded-xl bg-black/[0.02] border border-black/10 text-foreground placeholder-muted-foreground/60 focus:outline-none focus:border-primary/50 focus:ring-1 focus:ring-primary/25 transition-all"
                 required
               />
-              {confirmPassword && password !== confirmPassword && (
-                <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
-              )}
-              {confirmPassword && password === confirmPassword && (
-                <p className="text-xs text-primary mt-1 flex items-center gap-1">
-                  <Check className="w-3 h-3" /> Passwords match
-                </p>
-              )}
+              {/* Fixed height for the same reason as the strength meter: this
+                  line appearing used to nudge the terms checkbox out from
+                  under the cursor. */}
+              <div className="h-5 mt-1">
+                {confirmPassword && password !== confirmPassword && (
+                  <p className="text-xs text-red-500">Passwords do not match</p>
+                )}
+                {confirmPassword && password === confirmPassword && (
+                  <p className="text-xs text-primary flex items-center gap-1">
+                    <Check className="w-3 h-3" /> Passwords match
+                  </p>
+                )}
+              </div>
             </div>
 
             <label className="flex items-start gap-3 cursor-pointer">
               <input
                 type="checkbox"
                 checked={agreeToTerms}
-                onChange={(e) => setAgreeToTerms(e.target.checked)}
-                className="w-4 h-4 mt-1 rounded bg-black/[0.02] border border-black/10 text-primary focus:ring-primary/40"
+                onChange={(e) => {
+                  setAgreeToTerms(e.target.checked)
+                  if (e.target.checked) setTermsError(false)
+                }}
+                className={`w-4 h-4 mt-1 rounded bg-black/[0.02] border text-primary focus:ring-primary/40 ${
+                  termsError ? "border-red-500 ring-2 ring-red-500/30" : "border-black/10"
+                }`}
                 required
               />
               <span className="text-sm text-muted-foreground">

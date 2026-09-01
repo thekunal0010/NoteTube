@@ -276,11 +276,12 @@ export default function LandingPage() {
       {/* Hero Section */}
       <section className="relative pt-40 pb-24 px-4">
         <div className="max-w-6xl mx-auto grid lg:grid-cols-2 gap-16 items-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-          >
+          {/* CSS animation rather than framer-motion: this is the only
+              above-the-fold content, and a JS/rAF-driven fade leaves it stuck
+              part-way whenever the main thread stalls or the tab is throttled,
+              which reads as a blank page. A CSS animation runs on the
+              compositor and its `both` fill mode always ends fully visible. */}
+          <div className="animate-fade-up">
             <p className="text-xs font-semibold uppercase tracking-[0.15em] text-primary mb-5">
               Study companion &middot; no dark mode required
             </p>
@@ -344,7 +345,7 @@ export default function LandingPage() {
               {loading && <GenerationProgress stage={progress.stage} percent={progress.percent} />}
             </div>
             <p className="text-xs text-muted-foreground">Free for your first three lectures. No card required.</p>
-          </motion.div>
+          </div>
 
           <div className="hidden lg:block">
             <HeroPreview />
