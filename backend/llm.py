@@ -18,8 +18,10 @@ import os
 # materializing logits for every prompt position; see requirements.txt.
 os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
 
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+# torch and transformers are imported lazily, inside the functions that need
+# them. They are ~4.2GB installed and exist only for the local Qwen path; the
+# production image ships neither, and importing them here would make `import
+# app` fail outright on a container that has no ML stack.
 
 # 1.5B in fp16 is ~3.1GB, which leaves comfortable KV-cache headroom on a 6GB
 # card. Bigger variants only fit with 4-bit quantization, and bitsandbytes on
@@ -44,6 +46,12 @@ def _wanted_device():
 
     if requested == "cpu":
         return None
+
+    try:
+        import torch
+    except ImportError:
+        return None
+
     if not torch.cuda.is_available():
         return None
 
@@ -66,6 +74,9 @@ def _load():
         return
 
     try:
+        import torch
+        from transformers import AutoModelForCausalLM, AutoTokenizer
+
         tokenizer = AutoTokenizer.from_pretrained(_MODEL_NAME)
         model = AutoModelForCausalLM.from_pretrained(
             _MODEL_NAME,
@@ -149,6 +160,8 @@ def _generate(system, batch, max_new_tokens):
     transcript chunk makes both large. Splitting is far better than losing the
     user's whole request.
     """
+    import torch
+
     prompts = [_render(system, u) for u in batch]
 
     encoded = _tokenizer(

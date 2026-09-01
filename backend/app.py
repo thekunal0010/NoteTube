@@ -27,7 +27,14 @@ app = Flask(__name__)
 CORS(app)
 app.register_blueprint(auth)
 
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode="threading")
+# "threading" locally (Werkzeug's dev server serves WebSocket through
+# simple-websocket); the container sets this to "gevent", which is what
+# Flask-SocketIO needs to serve WebSocket under gunicorn. Kept configurable so
+# development behaviour is unchanged. See wsgi.py for the production entry
+# point, which must monkey-patch before anything else is imported.
+_ASYNC_MODE = os.getenv("NOTETUBE_SOCKETIO_ASYNC_MODE") or "threading"
+
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=_ASYNC_MODE)
 
 
 def _serialize_note(note):

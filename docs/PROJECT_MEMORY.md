@@ -7,11 +7,13 @@ file; do not rewrite prior entries.
 
 ## Current status
 
-**Phase complete:** Transcript provider migration to Supadata (backend only),
-**live-verified against the real API** on 3 videos. One real bug was found and
-fixed during that verification (segment granularity — see below).
-**Next phase:** Backend containerization + dependency split (see "Next planned phase").
-**Not started:** Gemini AI provider, AWS/EC2 deployment, Render deployment, Nginx.
+**Phase 1 complete (committed `02484bb`):** Transcript provider migration to
+Supadata, live-verified against the real API on 3 videos.
+**Phase 2 complete (uncommitted):** Backend containerization + dependency split.
+Production image builds at **255 MB** against a 4.7 GB local venv, runs healthy
+with WebSocket working, and carries no torch.
+**Next phase:** Gemini AI provider behind `llm.py`'s existing seam.
+**Not started:** AWS/EC2 deployment, Render deployment, Nginx.
 
 ---
 
@@ -236,9 +238,158 @@ as a header.
 
 ---
 
+## Phase 2 — Docker + production dependency split (2026-09-01)
+
+### Dependency split
+
+`requirements.txt` is now **production only**, derived empirically: `app.py` was
+imported with `torch` and `transformers` blocked and the loaded modules
+recorded, so the list is what actually runs rather than what happened to be
+installed. `requirements-local.txt` does `-r requirements.txt` plus the ML
+stack.
+
+| Classification | Packages |
+|---|---|
+| Production | Flask stack, Flask-SocketIO stack, pymongo + dnspython, bcrypt, PyJWT, python-dotenv, requests stack, gunicorn + gevent + gevent-websocket |
+| Local ML only | torch, transformers, tokenizers, safetensors, sentencepiece, huggingface_hub, numpy, regex, filelock, fsspec, networkx, sympy, mpmath, packaging, PyYAML, tqdm |
+| Local dev only | youtube-transcript-api, defusedxml (the `local` transcript provider) |
+| **Dropped as unused** | `Flask-PyMongo` (never imported — `db.py` uses a raw `MongoClient`), `dotenv==0.9.9` (a deprecated stub; `python-dotenv` is the real package), `websocket-client` (orphan, no `Required-by`, client-side only) |
+
+`requirements-local.txt` pins `torch==2.11.0` without the `+cu128` local
+version. Verified this does **not** clobber an existing CUDA install: per PEP
+440 `2.11.0+cu128` satisfies `==2.11.0`, and `pip install --dry-run` reports
+torch as already satisfied.
+
+### Lazy imports
+
+`app.py` previously could not be imported without torch. Fixed without changing
+behaviour:
+
+- **`llm.py`** — dropped module-level `import torch` / `transformers`. They are
+  imported inside `_wanted_device()`, `_load()` and `_generate()`. A missing
+  torch now reads as "no device", the same path as a missing GPU.
+- **`summarizer.py`** — device/model/beam/batch selection ran *at import time*
+  and called `torch.cuda.is_available()`. Moved behind `_bart_config()`, cached
+  on first use. `pipeline` is imported inside `_get_summarizer()`.
+- **New `SummarizerUnavailable(RuntimeError)`** — raised when neither a hosted
+  provider nor the local ML stack is present, so `/summary` returns a clear
+  reason instead of an ImportError traceback. **No fake success path.**
+- **`study_tools.py`** needed no change: it imports `llm`, which is now light.
+
+Verified: with torch and transformers blocked, all nine backend modules import,
+`llm.is_available()` returns False, and `generate_summary` raises
+`SummarizerUnavailable`. With torch present, `_bart_config()` still resolves to
+`cuda:0` / `bart-large-cnn` / 4 beams / batch 8 — local dev is unchanged.
+
+### Production server
+
+`socketio.run()` (Werkzeug dev server) is replaced in the container by
+**gunicorn + gevent**, entry point `wsgi.py`.
+
+**eventlet was the first choice and does not work: gunicorn 26.2.0 has removed
+the eventlet worker.** Confirmed empirically — the container failed to boot with
+`Entry point ('gunicorn.workers', 'eventlet') not found`, and
+`gunicorn.workers.SUPPORTED_WORKERS` lists only sync, gevent, gevent_wsgi,
+gevent_pywsgi, tornado, gthread and asgi. gevent is the only co-operative worker
+gunicorn still ships.
+
+Final choice: `gunicorn -k geventwebsocket.gunicorn.workers.GeventWebSocketWorker -w 1`.
+Verified with a real Socket.IO client against the running container:
+`transport = websocket`, not long-polling.
+
+- **`wsgi.py`** calls `monkey.patch_all()` *before* importing `app`. Patching
+  after import leaves pymongo and requests blocking the whole worker. (Importing
+  `wsgi` into an already-running interpreter fails with a gevent `KeyError` for
+  exactly this reason — under gunicorn it is the entry point, so it patches
+  first.)
+- **Exactly one worker**, permanently: progress events are addressed to an
+  in-memory Socket.IO sid. A second worker would hold its own disconnected set
+  of sids and silently drop events. Scaling out needs Redis before more workers.
+- `app.py` now reads `NOTETUBE_SOCKETIO_ASYNC_MODE`, defaulting to `threading`
+  so local development is untouched; the image sets `gevent`.
+- `gevent-websocket` is unmaintained (0.10.1, 2017) but imports and runs on
+  gevent 26.x. If it ever breaks, plain `-k gevent` still works and Socket.IO
+  degrades to long-polling, which these low-frequency progress events tolerate.
+
+### Docker
+
+`python:3.11-slim`. Dependencies in their own layer before the code copy so the
+expensive step stays cached. Non-root `appuser` created *after* pip install, so
+site-packages stays root-owned and the app cannot modify its own dependencies.
+`HEALTHCHECK` hits `/`. `--timeout 600` because generation legitimately runs for
+minutes. No secrets in the image; `SUPADATA_API_KEY`, `MONGO_URI` and
+`JWT_SECRET` arrive at runtime.
+
+`.dockerignore` excludes `.env*` (keeping `.env.example`), venvs, `__pycache__`,
+`test_*.py`, model weights and HF caches, `requirements-local.txt`, `.git/`,
+logs and editor cruft.
+
+### Results
+
+| Measure | Value |
+|---|---|
+| Image size | **255 MB** (local venv: 4.7 GB) |
+| site-packages in image | 57 MB |
+| torch/transformers/tokenizers/safetensors/sentencepiece/huggingface_hub/numpy | **all absent** |
+| youtube-transcript-api in image | absent (dev-only provider) |
+
+### Tests performed (Phase 2)
+
+| Test | Result |
+|---|---|
+| All 9 backend modules import with torch+transformers blocked | **PASS** |
+| `generate_summary` with no ML stack | **PASS** — raises `SummarizerUnavailable`, no crash, no fake success |
+| Local dev with torch present | **PASS** — `cuda:0`, bart-large-cnn, 4 beams, batch 8, unchanged |
+| `docker build` | **PASS** |
+| Container start | **PASS** — gunicorn + GeventWebSocketWorker, Docker health `healthy` |
+| `GET /` health endpoint | **PASS** — HTTP 200 |
+| Runs as non-root | **PASS** — `appuser` uid 1000 |
+| MongoDB Atlas from container | **PASS** — `/login` returns 401 "Invalid password" |
+| 22-test suite **inside** the container | **PASS** |
+| WebSocket transport | **PASS** — real Socket.IO client negotiated `websocket` |
+| Live Supadata **from inside the container** | **PASS** — `dQw4w9WgXcQ` 2089 chars/211.3s, `kqtD5dpn9C8` 50518 chars/3604.4s, identical to host |
+| `/summary` end-to-end through container | **PASS** — auth + transcript succeed, then a clear "No AI provider is available" (expected until Gemini) |
+| 22-test suite locally | **PASS** |
+
+### Security checks (Phase 2)
+
+- `.env` absent from the image (`ls /app/.env` → no such file)
+- `SUPADATA_API_KEY` empty in the image's own environment; supplied only at runtime
+- Whole-image filesystem grep for the live key value → **no matches**
+- `test_transcript.py` and `requirements-local.txt` excluded from the image
+- Key never printed in any output
+
+### Open risks (Phase 2)
+
+1. **`gevent-websocket` is unmaintained** (0.10.1, 2017). Works today on gevent
+   26.x; fallback is `-k gevent` with long-polling.
+2. **Single worker is a hard constraint**, not a tuning choice. Documented in
+   `wsgi.py` and the Dockerfile so it is not "optimised" away later.
+3. **The container has no AI provider.** `/summary` fetches the transcript then
+   returns HTTP 500 with a clear message. Expected until Gemini lands; the image
+   is not useful for generation before then.
+4. `python:3.11-slim` pins the minor version but not a digest, so a rebuild can
+   pick up a new patch release. Pin by digest if bit-identical rebuilds matter.
+
+---
+
 ## Next planned phase
 
-Backend containerization and dependency split, per the Phase 0.5 findings:
+**Gemini provider**, behind `llm.py`'s existing `is_available()` / `chat()` /
+`chat_batch()` seam — all six call sites already route through it, so
+`summarizer.py` and `study_tools.py` need no changes. Add the client to
+`requirements.txt` (production) and a `GEMINI_API_KEY` env var, mirroring the
+Supadata pattern in `supadata.py`. That closes risk 3 above and makes the
+container genuinely deployable.
+
+Then: AWS/EC2 + Nginx + Render deployment.
+
+---
+
+## Superseded plan — Phase 2 as originally scoped
+
+Backend containerization and dependency split, per the Phase 0.5 findings.
+**Completed above.** Retained for history:
 
 - **torch is 4,214 MB of a 4,678 MB venv (~90%)** and pinned to `+cu128`. A CUDA
   build on a CPU-only EC2 box is dead weight it can never use.

@@ -1,8 +1,9 @@
 import os
 import re
 
-import torch
-from transformers import pipeline
+# torch and transformers are imported lazily, inside the functions that need
+# them: they exist only for the BART fallback, which the production image does
+# not ship. See _bart_config().
 
 import llm
 from text_filters import is_filler, strip_meta_preamble
@@ -25,7 +26,15 @@ _GPU_MODEL = "facebook/bart-large-cnn"
 _CPU_MODEL = "sshleifer/distilbart-cnn-12-6"
 
 
-def _resolve_device():
+class SummarizerUnavailable(RuntimeError):
+    """No summarization backend is installed.
+
+    Raised instead of an ImportError so /summary reports a clear reason rather
+    than a stack trace about a missing module.
+    """
+
+
+def _resolve_device(torch):
     """Return the pipeline `device` index: 0 for the first GPU, -1 for CPU.
 
     NOTETUBE_DEVICE ("cpu"/"cuda") forces a choice; otherwise autodetect.
@@ -45,28 +54,58 @@ def _resolve_device():
     return 0 if torch.cuda.is_available() else -1
 
 
-_DEVICE = _resolve_device()
-_ON_GPU = _DEVICE >= 0
+_config = None
 
-_MODEL_NAME = os.getenv("NOTETUBE_SUMMARIZER_MODEL") or (_GPU_MODEL if _ON_GPU else _CPU_MODEL)
 
-# Beam search multiplies decode cost by the beam count. Worth it on a GPU, far
-# too expensive on a CPU.
-_NUM_BEAMS = 4 if _ON_GPU else 1
+def _bart_config():
+    """Resolve device, model and batching for the BART fallback, once.
 
-# How many chunks go through the model at once. Batching keeps the device busy
-# instead of paying per-call overhead 40+ times.
-_BATCH_SIZE = 8 if _ON_GPU else 4
+    This used to run at import time, which meant `import app` required torch —
+    a ~4.2GB dependency the production container has no use for. Deferring it
+    keeps the import free and lets the ML stack be absent entirely.
+    """
+    global _config
 
-print(
-    "[summarizer] device={} fallback_model={} num_beams={} batch_size={}".format(
-        "cuda:0 ({})".format(torch.cuda.get_device_name(0)) if _ON_GPU else "cpu",
-        _MODEL_NAME,
-        _NUM_BEAMS,
-        _BATCH_SIZE,
-    ),
-    flush=True,
-)
+    if _config is not None:
+        return _config
+
+    try:
+        import torch
+    except ImportError as exc:
+        raise SummarizerUnavailable(
+            "No AI provider is available: the local model stack is not installed "
+            "and no hosted provider is configured."
+        ) from exc
+
+    device = _resolve_device(torch)
+    on_gpu = device >= 0
+
+    _config = {
+        "torch": torch,
+        "device": device,
+        "on_gpu": on_gpu,
+        "model_name": os.getenv("NOTETUBE_SUMMARIZER_MODEL")
+        or (_GPU_MODEL if on_gpu else _CPU_MODEL),
+        # Beam search multiplies decode cost by the beam count. Worth it on a
+        # GPU, far too expensive on a CPU.
+        "num_beams": 4 if on_gpu else 1,
+        # How many chunks go through the model at once. Batching keeps the
+        # device busy instead of paying per-call overhead 40+ times.
+        "batch_size": 8 if on_gpu else 4,
+    }
+
+    print(
+        "[summarizer] device={} fallback_model={} num_beams={} batch_size={}".format(
+            "cuda:0 ({})".format(torch.cuda.get_device_name(0)) if on_gpu else "cpu",
+            _config["model_name"],
+            _config["num_beams"],
+            _config["batch_size"],
+        ),
+        flush=True,
+    )
+
+    return _config
+
 
 _summarizer = None
 
@@ -80,15 +119,25 @@ def _get_summarizer():
     global _summarizer
 
     if _summarizer is None:
-        kwargs = {}
-        if _ON_GPU:
-            kwargs["torch_dtype"] = torch.float16
+        config = _bart_config()
 
-        print("[summarizer] loading BART fallback (%s)" % _MODEL_NAME, flush=True)
+        try:
+            from transformers import pipeline
+        except ImportError as exc:
+            raise SummarizerUnavailable(
+                "No AI provider is available: the local model stack is not "
+                "installed and no hosted provider is configured."
+            ) from exc
+
+        kwargs = {}
+        if config["on_gpu"]:
+            kwargs["torch_dtype"] = config["torch"].float16
+
+        print("[summarizer] loading BART fallback (%s)" % config["model_name"], flush=True)
         _summarizer = pipeline(
             "summarization",
-            model=_MODEL_NAME,
-            device=_DEVICE,
+            model=config["model_name"],
+            device=config["device"],
             **kwargs,
         )
 
@@ -170,7 +219,7 @@ def _summarize_with_bart(text, max_chunks, progress_callback):
     so longer lectures get most/all of their transcript summarized instead of
     being cut off after the first ~18,000 characters regardless of length.
 
-    Chunks are fed to the model in batches of `_BATCH_SIZE` rather than one at
+    Chunks are fed to the model in batches (see _bart_config) rather than one at
     a time — the per-call overhead dominated runtime on long videos, where
     there can be 100 of them.
     """
@@ -191,15 +240,17 @@ def _summarize_with_bart(text, max_chunks, progress_callback):
     summaries = []
     total = len(chunks)
 
-    for start in range(0, total, _BATCH_SIZE):
-        batch = chunks[start:start + _BATCH_SIZE]
+    batch_size = _bart_config()["batch_size"]
+
+    for start in range(0, total, batch_size):
+        batch = chunks[start:start + batch_size]
 
         results = _get_summarizer()(
             batch,
             max_length=max_length,
             min_length=min_length,
             do_sample=False,
-            num_beams=_NUM_BEAMS,
+            num_beams=_bart_config()["num_beams"],
             batch_size=len(batch),
         )
 

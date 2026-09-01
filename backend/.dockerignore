@@ -1,0 +1,55 @@
+# Secrets — never enter the image. SUPADATA_API_KEY, MONGO_URI and JWT_SECRET
+# are supplied at runtime via --env-file or the platform's secret store.
+.env
+.env.*
+!.env.example
+
+# Virtual environments (~4.7GB locally, and Linux cannot use Windows binaries)
+venv/
+.venv/
+env/
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Tests and their artifacts — the production image does not run them
+test_*.py
+*_test.py
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local ML stack: model weights and Hugging Face caches. Multi-GB, and the
+# production image has no torch to load them with.
+models/
+*.safetensors
+*.bin
+*.pt
+*.pth
+*.onnx
+.cache/
+huggingface/
+
+# Development-only dependency set (torch/transformers/youtube-transcript-api)
+requirements-local.txt
+
+# Git metadata
+.git/
+.gitignore
+.gitattributes
+
+# Docker's own files
+Dockerfile
+.dockerignore
+
+# Logs written by local runs
+*.log
+
+# Editor / OS cruft
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
