@@ -15,7 +15,11 @@ import { Reveal, revealItem } from "@/components/motion/reveal"
 import { Counter } from "@/components/motion/counter"
 import { Marquee } from "@/components/motion/marquee"
 import { Magnetic } from "@/components/motion/magnetic"
-import { HorizontalScroll } from "@/components/motion/horizontal-scroll"
+import { CTA4 } from "@/components/cta-4"
+import { Navigation3 } from "@/components/navigation-3"
+import AccordionGallery, { type AccordionGalleryItem } from "@/components/AccordionGallery"
+import { Footer7 } from "@/components/footer-7"
+import { Stats10 } from "@/components/stats-10"
 import {
   Sparkles,
   Play,
@@ -35,31 +39,36 @@ import {
   LogOut,
 } from "lucide-react"
 
-const features = [
+const howItWorksItems: AccordionGalleryItem[] = [
   {
-    icon: FileText,
-    title: "Notes worth keeping",
+    image: "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80",
+    step: "01",
+    label: "Paste Lecture Link",
+    description: "Provide any YouTube video URL. NoteTube extracts the full transcript and prepares the learning pipeline.",
+  },
+  {
+    image: "https://images.unsplash.com/photo-1455390582262-044cdead277a?auto=format&fit=crop&w=1200&q=80",
+    step: "02",
+    label: "Notes Worth Keeping",
     description: "A clear overview plus organized key points — not a one-paragraph blur. Structured the way you'd actually write it.",
   },
   {
-    icon: CreditCard,
-    title: "Flashcards",
+    image: "https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=1200&q=80",
+    step: "03",
+    label: "Active Flashcards",
     description: "Auto-generated from the real material, ready for spaced-repetition review.",
   },
   {
-    icon: ListChecks,
-    title: "A quiz to prove it",
-    description: "Practice questions pulled straight from the lecture, with instant feedback.",
+    image: "https://images.unsplash.com/photo-1606326608606-aa0b62935f2b?auto=format&fit=crop&w=1200&q=80",
+    step: "04",
+    label: "A Quiz to Prove It",
+    description: "Practice questions pulled straight from the lecture, with instant feedback and score tracking.",
   },
   {
-    icon: BookOpen,
-    title: "One connected kit",
-    description: "Notes, flashcards, and quiz for a video live together — no hunting across tabs.",
-  },
-  {
-    icon: Download,
-    title: "Export & revisit",
-    description: "Download your materials and pick up exactly where you left off.",
+    image: "https://images.unsplash.com/photo-1497633762265-9d179a990aa6?auto=format&fit=crop&w=1200&q=80",
+    step: "05",
+    label: "One Connected Kit",
+    description: "Notes, flashcards, and quizzes live together in your personal library for effortless revision.",
   },
 ]
 
@@ -71,12 +80,6 @@ const trendingLectures = [
   { title: "DBMS Lecture", category: "Database" },
 ]
 
-const stats = [
-  { value: 50, suffix: "K+", label: "Notes Generated", icon: FileText },
-  { value: 10, suffix: "K+", label: "Videos Processed", icon: Video },
-  { value: 100, suffix: "K+", label: "Flashcards Created", icon: Layers },
-  { value: 25, suffix: "K+", label: "Active Students", icon: Users },
-]
 
 interface RecentNote {
   id: string
@@ -92,7 +95,6 @@ function excerptOf(note: RecentNote) {
 
 export default function LandingPage() {
   const [youtubeUrl, setYoutubeUrl] = useState("")
-  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [progress, setProgress] = useState({ stage: "", percent: 0 })
@@ -160,118 +162,37 @@ export default function LandingPage() {
 
   }
 
+  const navLinks = isLoggedIn
+    ? [
+        { label: "Home", href: "/" },
+        { label: "How It Works", href: "#features" },
+        { label: "History", href: "/history" },
+        { label: "About", href: "#about" },
+      ]
+    : [
+        { label: "Home", href: "/" },
+        { label: "How It Works", href: "#features" },
+        { label: "Trending", href: "#recent-searches" },
+        { label: "About", href: "#about" },
+      ]
+
   return (
     <div className="min-h-screen relative overflow-x-clip">
-      {/* Navbar */}
-      <nav className="fixed top-0 left-0 right-0 z-50 glass-nav">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between h-16">
-            {/* Logo */}
-            <Link href="/" className="flex items-center gap-2">
-              <img src="/logo.png" alt="NoteTube AI" className="w-8 h-8 object-contain" />
-              <span className="text-lg font-serif-display font-semibold tracking-tight text-foreground">NoteTube AI</span>
-            </Link>
-
-            {/* Desktop Nav */}
-            <div className="hidden md:flex items-center gap-8">
-              <Link href="#features" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
-                How it works
-              </Link>
-              <Link href="#about" className="text-muted-foreground hover:text-foreground transition-colors text-sm">
-                About
-              </Link>
-              {isLoggedIn ? (
-                <>
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-1.5 text-muted-foreground hover:text-destructive transition-colors text-sm"
-                  >
-                    <LogOut className="w-3.5 h-3.5" />
-                    Logout
-                  </button>
-                  <Magnetic strength={0.25}>
-                    <Link
-                      href="/dashboard"
-                      className="gradient-button px-4 py-2 rounded-lg text-primary-foreground text-sm font-medium inline-flex items-center gap-2"
-                    >
-                      <LayoutDashboard className="w-3.5 h-3.5" />
-                      Dashboard
-                    </Link>
-                  </Magnetic>
-                </>
-              ) : (
-                <>
-                  <Link
-                    href="/login"
-                    className="text-muted-foreground hover:text-foreground transition-colors text-sm"
-                  >
-                    Login
-                  </Link>
-                  <Magnetic strength={0.25}>
-                    <Link
-                      href="/signup"
-                      className="gradient-button px-4 py-2 rounded-lg text-primary-foreground text-sm font-medium inline-block"
-                    >
-                      Start free
-                    </Link>
-                  </Magnetic>
-                </>
-              )}
-            </div>
-
-            {/* Mobile Menu Button */}
-            <button
-              className="md:hidden text-foreground"
-              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            >
-              {mobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-          </div>
-        </div>
-
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden panel border-t">
-            <div className="px-4 py-4 space-y-3">
-              <Link href="#features" className="block text-muted-foreground hover:text-foreground">
-                How it works
-              </Link>
-              <Link href="#about" className="block text-muted-foreground hover:text-foreground">
-                About
-              </Link>
-              {isLoggedIn ? (
-                <>
-                  <Link
-                    href="/dashboard"
-                    className="block gradient-button px-4 py-2 rounded-lg text-primary-foreground text-sm font-medium text-center"
-                  >
-                    Dashboard
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="flex items-center gap-1.5 text-muted-foreground hover:text-destructive transition-colors"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    Logout
-                  </button>
-                </>
-              ) : (
-                <>
-                  <Link href="/login" className="block text-muted-foreground hover:text-foreground">
-                    Login
-                  </Link>
-                  <Link
-                    href="/signup"
-                    className="block gradient-button px-4 py-2 rounded-lg text-primary-foreground text-sm font-medium text-center"
-                  >
-                    Start free
-                  </Link>
-                </>
-              )}
-            </div>
-          </div>
-        )}
-      </nav>
+      {/* Navigation 3 from React Bits Pro: Logo left, grouped center links, auth right with mobile menu */}
+      <Navigation3
+        logo={{
+          src: "/logo.png",
+          alt: "NoteTube AI",
+          title: "NoteTube AI",
+          href: "/",
+        }}
+        links={navLinks}
+        isLoggedIn={isLoggedIn}
+        onLogout={handleLogout}
+        loginHref="/login"
+        signupHref="/signup"
+        dashboardHref="/dashboard"
+      />
 
       {/* Hero Section */}
       <section className="relative pt-40 pb-24 px-4">
@@ -353,106 +274,124 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* Recent searches (logged in) or trending lectures (logged out) — infinite marquee */}
-      <Reveal as="section" className="relative py-14 border-y border-border">
-        <div className="flex items-center justify-center gap-2 mb-8 px-4">
-          <Zap className="w-4 h-4 text-primary" />
-          <h2 className="text-sm font-semibold uppercase tracking-widest text-muted-foreground">
-            {isLoggedIn && recentNotes.length > 0 ? "Your Recent Searches" : "Trending Lectures"}
-          </h2>
-        </div>
-
-        {isLoggedIn && recentNotes.length > 0 ? (
-          <>
-            <Marquee>
-              {recentNotes.map((note) => (
-                <Link
-                  key={note.id}
-                  href={`/notes/${note.id}`}
-                  className="px-4 py-2 rounded-full panel panel-hover text-foreground/80 text-sm whitespace-nowrap inline-block"
-                >
-                  {excerptOf(note)}
-                </Link>
-              ))}
-            </Marquee>
-            <p className="text-center mt-6">
-              <Link href="/history" className="text-sm text-primary hover:text-primary/80 transition-colors">
-                View full history &rarr;
-              </Link>
-            </p>
-          </>
-        ) : isLoggedIn ? (
-          <p className="text-center text-sm text-muted-foreground px-4">
-            You haven&apos;t generated any notes yet — paste a link above to get started.
-          </p>
-        ) : (
-          <Marquee>
-            {trendingLectures.map((lecture) => (
-              <span
-                key={lecture.title}
-                className="px-4 py-2 rounded-full panel text-foreground/80 text-sm whitespace-nowrap"
-              >
-                {lecture.title}
-                <span className="ml-2 text-xs text-primary">{lecture.category}</span>
-              </span>
-            ))}
-          </Marquee>
-        )}
+      {/* Recent searches (logged in) or trending lectures (logged out) — CTA 4 block with infinitely scrolling cards */}
+      <div id="recent-searches">
+        <Reveal as="div" className="relative">
+        <CTA4
+          badge={isLoggedIn && recentNotes.length > 0 ? "Your Study Repository" : "Recent Searches & Trending"}
+          title={
+            isLoggedIn && recentNotes.length > 0 ? (
+              <>
+                Your lectures, <span className="italic text-gradient">ready to review</span>
+              </>
+            ) : (
+              <>
+                Summarize any lecture in <span className="italic text-gradient">seconds</span>
+              </>
+            )
+          }
+          description={
+            isLoggedIn && recentNotes.length > 0
+              ? "Revisit your generated study kits with structured notes, active-recall flashcards, and quizzes, or start fresh with a new lecture above."
+              : "Explore recently transformed lectures below. Click any card to load the topic, or paste your own YouTube link above to create an instant study kit."
+          }
+          actionText={isLoggedIn ? "Open Dashboard" : "Start learning free"}
+          actionHref={isLoggedIn ? "/dashboard" : "/signup"}
+          secondaryActionText={isLoggedIn ? "View full history" : undefined}
+          secondaryActionHref="/history"
+          recentNotes={recentNotes}
+          isLoggedIn={isLoggedIn}
+          onSelectLecture={(url) => {
+            setYoutubeUrl(url)
+            window.scrollTo({ top: 0, behavior: "smooth" })
+            toast.info("Lecture URL loaded into generator")
+          }}
+        />
       </Reveal>
+    </div>
 
-      {/* Features — pinned horizontal scroll */}
-      <div id="features" className="relative">
-        <Reveal className="max-w-3xl mx-auto text-center px-4 pt-16 pb-4">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-primary mb-4">
+      {/* Features — AccordionGallery from React Bits */}
+      <section id="features" className="relative py-20 px-4 max-w-6xl mx-auto">
+        <Reveal className="max-w-3xl mx-auto text-center mb-12">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-primary mb-3">
             How it works
           </p>
           <h2 className="text-3xl md:text-4xl font-serif-display font-semibold text-foreground mb-4 tracking-tight">
-            Three artefacts from one link
+            Three artefacts from <span className="italic text-gradient">one link</span>
           </h2>
-          <p className="text-foreground/60">
-            One pipeline turns a lecture into a full study kit. Keep scrolling to see how.
+          <p className="text-foreground/70 max-w-xl mx-auto">
+            One automated pipeline turns any lecture into a full study kit. Hover or tap across each step to explore.
           </p>
         </Reveal>
 
-        <HorizontalScroll itemCount={features.length}>
-          {features.map((feature, i) => (
-            <div
-              key={feature.title}
-              className="panel panel-hover rounded-2xl p-8 w-[340px] sm:w-[380px] h-[380px] flex-shrink-0 flex flex-col justify-between relative overflow-hidden"
-            >
-              <span className="absolute top-6 right-7 font-serif-display text-5xl font-semibold text-primary/[0.07] select-none">
-                {String(i + 1).padStart(2, "0")}
-              </span>
-              <div className="w-12 h-12 rounded-xl gradient-accent flex items-center justify-center">
-                <feature.icon className="w-6 h-6 text-primary-foreground" />
-              </div>
-              <div>
-                <h3 className="text-xl font-serif-display font-semibold text-foreground mb-3">
-                  {feature.title}
-                </h3>
-                <p className="text-foreground/65 leading-relaxed">{feature.description}</p>
-              </div>
-            </div>
-          ))}
-        </HorizontalScroll>
-      </div>
-
-      {/* Stats Section */}
-      <Reveal as="section" className="relative py-16 px-4" stagger={0.1}>
-        <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {stats.map((stat) => (
-              <motion.div key={stat.label} variants={revealItem} className="panel rounded-2xl p-6 text-center">
-                <stat.icon className="w-5 h-5 text-primary mx-auto mb-3" />
-                <p className="text-3xl md:text-4xl font-serif-display font-semibold text-foreground mb-1">
-                  <Counter value={stat.value} suffix={stat.suffix} />
-                </p>
-                <p className="text-muted-foreground text-sm">{stat.label}</p>
-              </motion.div>
-            ))}
+        <Reveal>
+          <div className="p-2.5 sm:p-3.5 rounded-[24px] bg-card/60 border border-border/80 shadow-sm backdrop-blur-sm">
+            <AccordionGallery
+              items={howItWorksItems}
+              defaultIndex={1}
+              expandRatio={0.46}
+              trigger="hover"
+              accentColor="#bd5b2c"
+              overlayColor="#2a241c"
+              textColor="#fffdf8"
+              height={460}
+              radius={16}
+              gap={10}
+              grayscale={true}
+            />
           </div>
-        </div>
-      </Reveal>
+        </Reveal>
+      </section>
+
+      {/* Stats 10 from React Bits Pro: Color-blocked stat cards with count-up numbers and supporting labels */}
+      <Stats10
+        badge="Proven Study Impact"
+        title={
+          <>
+            Built for students <br className="hidden sm:inline" />
+            who study <span className="font-serif italic font-normal text-primary">relentlessly</span>
+          </>
+        }
+        description="Transforming passive YouTube lectures into active, high-yield academic retention across thousands of universities."
+        stats={[
+          {
+            value: 50,
+            suffix: "K+",
+            label: "Notes generated across college courses",
+            sublabel: "98% conceptual accuracy",
+            bgColor: "#fffdf8",
+            textColor: "#2a241c",
+            borderColor: "#e2d6bd",
+          },
+          {
+            value: 10,
+            suffix: "K+",
+            label: "Lecture videos distilled into concise study kits",
+            sublabel: "3.5x average study speedup",
+            bgColor: "#1e1813",
+            textColor: "#fdf6ec",
+            borderColor: "#382d23",
+          },
+          {
+            value: 100,
+            suffix: "K+",
+            label: "Active-recall flashcards & quiz questions created",
+            sublabel: "Spaced-repetition ready",
+            bgColor: "#bd5b2c",
+            textColor: "#fffdf8",
+            borderColor: "#a6491e",
+          },
+          {
+            value: 25,
+            suffix: "K+",
+            label: "Active students studying with NoteTube AI",
+            sublabel: "Across 140+ institutions",
+            bgColor: "#ede1c8",
+            textColor: "#2a241c",
+            borderColor: "#dcceb0",
+          },
+        ]}
+      />
 
       {/* CTA Section */}
       <Reveal as="section" id="about" className="relative py-24 px-4">
@@ -475,36 +414,18 @@ export default function LandingPage() {
         </div>
       </Reveal>
 
-      {/* Footer */}
-      <footer className="relative border-t border-border py-8 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="NoteTube AI" className="w-6 h-6 object-contain" />
-            <span className="text-sm text-muted-foreground">
-              NoteTube AI &mdash; Transform lectures into knowledge
-            </span>
-          </div>
-          <div className="flex items-center gap-6 text-sm text-muted-foreground">
-            <button
-              type="button"
-              onClick={() => setLegalDoc("privacy")}
-              className="hover:text-foreground transition-colors"
-            >
-              Privacy
-            </button>
-            <button
-              type="button"
-              onClick={() => setLegalDoc("terms")}
-              className="hover:text-foreground transition-colors"
-            >
-              Terms
-            </button>
-            <Link href="#" className="hover:text-foreground transition-colors">
-              Contact
-            </Link>
-          </div>
-        </div>
-      </footer>
+      {/* Footer 7 from React Bits Pro: Minimal footer with circular logo badge, link columns, and pill newsletter form */}
+      <Footer7
+        logo={{
+          src: "/logo.png",
+          alt: "NoteTube AI",
+          title: "NoteTube AI",
+          href: "/",
+        }}
+        tagline="Transform hours of YouTube lectures into structured notes, spaced-repetition flashcards, and instant self-testing quizzes."
+        onPrivacyClick={() => setLegalDoc("privacy")}
+        onTermsClick={() => setLegalDoc("terms")}
+      />
 
       <LegalDialog type={legalDoc} onOpenChange={(open) => !open && setLegalDoc(null)} />
     </div>

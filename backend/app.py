@@ -364,4 +364,5 @@ if __name__ == '__main__':
         use_reloader=use_reloader,
         host="0.0.0.0",
         port=5000,
+        allow_unsafe_werkzeug=True,
     )
